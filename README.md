@@ -1,6 +1,6 @@
 # IBM_AI_Build
 
-##Details to Add
+# **Details to Add**
 1. Problem statement
 2. Solution description
 3. AI approach and architecture
