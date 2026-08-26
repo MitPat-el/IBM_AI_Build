@@ -12,7 +12,7 @@ Architecture:
   seed.py           -> populates the DB with fake mission data
   projection.py     -> Mission Risk Map + What-If Simulator (no AI)
   replay.py         -> Historical Replay + trend-based forward projection (no AI)
-  bob_client.py     -> IBM Bob / watsonx, ONLY called when drift_score crosses
+  bob.py     -> IBM Bob / watsonx, ONLY called when drift_score crosses
                         EXPLANATION_TRIGGER_THRESHOLD. Results are cached in
                         the `explanations` table so the same alert is never
                         re-explained twice.
@@ -22,6 +22,7 @@ On first run (empty DB) the app auto-seeds a default 3-astronaut, 6-day
 fake mission so there's never a blank/broken demo state.
 """
 
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import Body, Depends, FastAPI, HTTPException
@@ -33,19 +34,10 @@ from drift import DriftWeights, EXPLANATION_TRIGGER_THRESHOLD
 from db.session import init_db, get_db, get_session
 from db.models import Astronaut
 from db.repository import load_crew, load_profile, load_mission_records, get_cached_explanation, save_explanation
-from bob_client import explain_drift
+from bob import explain_drift
 from projection import project_mission_risk, mission_risk_summary, simulate_intervention
 from replay import get_replay, project_forward
 from db import seed as seed_module
-
-app = FastAPI(title="Astronaut Fatigue Drift API", version="0.2.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # tighten before demo-day if needed
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Runtime state: the formula weights currently applied to the seeded data.
 # Not persisted -- purely reflects what /mission/reset was last called with,
@@ -53,13 +45,24 @@ app.add_middleware(
 CURRENT_WEIGHTS = DriftWeights()
 
 
-@app.on_event("startup")
-def on_startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     init_db()
     with get_session() as db:
         has_data = db.query(Astronaut).first() is not None
     if not has_data:
         seed_module.seed(num_days=6, wipe_existing=True, weights=CURRENT_WEIGHTS)
+    yield
+
+
+app = FastAPI(title="Astronaut Fatigue Drift API", version="0.2.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # tighten before demo-day if needed
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ---------------------------------------------------------------------------

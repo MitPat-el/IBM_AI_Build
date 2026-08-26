@@ -9,7 +9,7 @@ Tables mirror exactly what the existing pipeline already produces:
   Astronaut     <- simulator.AstronautProfile
   MissionDay    <- simulator.MissionDayRecord (raw signals)
   DriftScore    <- drift.DriftResult (computed sub-scores + composite)
-  Explanation   <- bob_client.Explanation (cached AI output, so Bob isn't
+  Explanation   <- bob.Explanation (cached AI output, so Bob isn't
                    re-called every time someone re-views the same alert)
 """
 
