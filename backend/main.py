@@ -22,17 +22,19 @@ On first run (empty DB) the app auto-seeds a default 3-astronaut, 6-day
 fake mission so there's never a blank/broken demo state.
 """
 
+import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import Body, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from drift import DriftWeights, EXPLANATION_TRIGGER_THRESHOLD
 from db.session import init_db, get_db, get_session
-from db.models import Astronaut
+from db.models import Astronaut, Task, MissionDay
 from db.repository import load_crew, load_profile, load_mission_records, get_cached_explanation, save_explanation, load_task_graph
 from bob import explain_drift
 from projection import project_mission_risk, mission_risk_summary, simulate_intervention
@@ -45,14 +47,30 @@ from db import seed as seed_module
 # for display purposes (e.g. showing "current weights" in a UI).
 CURRENT_WEIGHTS = DriftWeights()
 
+# Set FORCE_RESEED=1 to always wipe and reseed everything on startup --
+# a convenience for active development, not needed for normal use since
+# the self-healing check below already backfills missing tables.
+FORCE_RESEED = os.environ.get("FORCE_RESEED", "").lower() in ("1", "true", "yes")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     with get_session() as db:
-        has_data = db.query(Astronaut).first() is not None
-    if not has_data:
+        has_astronauts = db.query(Astronaut).first() is not None
+        has_tasks = db.query(Task).first() is not None
+        existing_max_day = db.query(func.max(MissionDay.day)).scalar()
+
+    if FORCE_RESEED or not has_astronauts:
+        # Fresh database, or an explicit forced reset -- seed everything.
         seed_module.seed(num_days=6, wipe_existing=True, weights=CURRENT_WEIGHTS)
+    elif not has_tasks:
+        # Self-heal: astronaut/mission data already exists (e.g. from
+        # before the Dependency Graph feature was added) but the tasks
+        # table is empty. Backfill just the task graph, matching the
+        # existing mission length, without touching anything else --
+        # no need to ever manually delete the database for this.
+        seed_module._seed_tasks(seed_module.DEFAULT_CREW, existing_max_day or 6, wipe_existing=True)
     yield
 
 

@@ -131,6 +131,48 @@ def test_tasks_graph_is_populated_on_startup(client):
     assert len(resp["edges"]) == 12
 
 
+def test_self_heals_missing_tasks_without_wiping_astronauts(client):
+    """Regression test for a real reported issue: a database seeded
+    before the Dependency Graph feature existed has astronauts/missions
+    but no tasks. On next startup, the app must backfill just the tasks
+    -- not wipe and reseed everything, and not require the person to
+    manually delete the database file."""
+    import sqlite3
+    import os as os_module
+
+    db_path = os_module.environ["DATABASE_URL"].replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    conn.execute("DELETE FROM task_dependencies")
+    conn.execute("DELETE FROM tasks")
+    conn.commit()
+    conn.close()
+
+    # simulate a server restart against this now-stale db: a fresh
+    # TestClient re-triggers the lifespan startup logic
+    from fastapi.testclient import TestClient
+    from main import app
+
+    with TestClient(app) as client2:
+        graph = client2.get("/tasks/graph").json()
+        assert len(graph["nodes"]) == 18  # backfilled
+
+        crew = client2.get("/crew").json()
+        assert {c["astronaut_id"] for c in crew} == {"A1", "A2", "A3"}  # untouched, not reset
+
+
+def test_self_heal_is_idempotent_no_duplicate_tasks_on_repeated_restarts(client):
+    """A healthy database (tasks already present) must not get
+    reseeded/duplicated on every restart."""
+    from fastapi.testclient import TestClient
+    from main import app
+
+    with TestClient(app) as client2:
+        pass  # trigger one more lifespan startup against the already-healthy db
+    with TestClient(app) as client3:
+        graph = client3.get("/tasks/graph").json()
+        assert len(graph["nodes"]) == 18  # still 18, not 36 or 54
+
+
 def test_task_impact_route_not_shadowed_by_graph_or_at_risk(client):
     """Regression guard: /tasks/graph and /tasks/at-risk must stay
     declared before /tasks/{task_id}/impact, the same route-ordering
