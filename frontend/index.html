@@ -1,0 +1,1024 @@
+/*Just a mock frontend */
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FATIGUE CONSOLE // Crew Drift Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0D10;
+    --panel:#11161B;
+    --panel-raised:#171D24;
+    --hairline:#262E36;
+    --hairline-bright:#3A4550;
+    --text:#E8EDF1;
+    --text-dim:#7C8794;
+    --text-faint:#4B5560;
+    --nominal:#4CD787;
+    --elevated:#FFCB47;
+    --high:#FF9A3D;
+    --critical:#FF4B4B;
+    --cyan:#5AD1E0;
+    --nominal-dim: rgba(76,215,135,0.14);
+    --elevated-dim: rgba(255,203,71,0.14);
+    --high-dim: rgba(255,154,61,0.14);
+    --critical-dim: rgba(255,75,75,0.14);
+  }
+
+  *{box-sizing:border-box; margin:0; padding:0;}
+
+  html,body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+  }
+
+  ::selection{ background:var(--cyan); color:#04141a; }
+
+  :focus-visible{
+    outline:2px solid var(--cyan);
+    outline-offset:2px;
+  }
+
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--text-dim);
+  }
+
+  .mono{ font-family:'IBM Plex Mono', monospace; }
+
+  /* ---------- Shell ---------- */
+  .shell{
+    max-width:1320px;
+    margin:0 auto;
+    padding:20px 24px 64px;
+  }
+
+  /* ---------- Header ---------- */
+  header{
+    position:relative;
+    border:1px solid var(--hairline);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%),
+      var(--panel);
+    padding:18px 22px;
+    overflow:hidden;
+    margin-bottom:18px;
+  }
+  header::before{
+    content:"";
+    position:absolute; inset:0;
+    background-image:repeating-linear-gradient(
+      0deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px,
+      transparent 1px, transparent 3px
+    );
+    pointer-events:none;
+    mix-blend-mode:overlay;
+  }
+  .header-row{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:24px;
+    flex-wrap:wrap;
+    position:relative;
+  }
+  .brand{ display:flex; flex-direction:column; gap:6px; }
+  .brand h1{
+    font-family:'IBM Plex Mono', monospace;
+    font-weight:700;
+    font-size:20px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+  }
+  .brand h1 span{ color:var(--text-faint); font-weight:500; }
+  .brand .sub{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    color:var(--text-dim);
+    letter-spacing:0.08em;
+  }
+
+  .status-cluster{
+    display:flex;
+    gap:28px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+  .status-item{ display:flex; flex-direction:column; gap:4px; align-items:flex-end; }
+  .status-item .val{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:15px;
+    font-weight:600;
+  }
+  .risk-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:3px 9px;
+    border:1px solid currentColor;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+  }
+  .risk-pill .dot{ width:6px; height:6px; border-radius:50%; background:currentColor; box-shadow:0 0 6px currentColor; }
+  .risk-nominal{ color:var(--nominal); }
+  .risk-elevated{ color:var(--elevated); }
+  .risk-high{ color:var(--high); }
+  .risk-critical{ color:var(--critical); }
+
+  .link-indicator{ display:flex; align-items:center; gap:8px; }
+  .link-dot{ width:8px; height:8px; border-radius:50%; background:var(--text-faint); transition:background .2s; }
+  .link-dot.ok{ background:var(--nominal); box-shadow:0 0 8px var(--nominal); }
+  .link-dot.bad{ background:var(--critical); box-shadow:0 0 8px var(--critical); }
+  #apiBase{
+    background:transparent;
+    border:none;
+    border-bottom:1px dashed var(--hairline-bright);
+    color:var(--text-dim);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    padding:2px 0;
+    width:190px;
+  }
+  #apiBase:focus{ color:var(--text); border-bottom-color:var(--cyan); }
+
+  /* ---------- Layout grid ---------- */
+  .grid{
+    display:grid;
+    grid-template-columns: 1.55fr 1fr;
+    gap:18px;
+    align-items:start;
+  }
+  @media (max-width:920px){ .grid{ grid-template-columns:1fr; } }
+
+  .panel{
+    border:1px solid var(--hairline);
+    background:var(--panel);
+  }
+  .panel-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:12px 16px;
+    border-bottom:1px solid var(--hairline);
+  }
+  .panel-title{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--text);
+  }
+  .panel-body{ padding:16px; }
+
+  /* ---------- Risk matrix ---------- */
+  .matrix-wrap{ overflow-x:auto; }
+  table.matrix{ border-collapse:collapse; width:100%; }
+  table.matrix th, table.matrix td{ padding:0; text-align:left; }
+  table.matrix thead th{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px;
+    letter-spacing:0.08em;
+    color:var(--text-dim);
+    text-transform:uppercase;
+    padding:0 6px 8px;
+    font-weight:500;
+  }
+  table.matrix thead th.day-col{ text-align:center; }
+  .crew-label{
+    display:flex; flex-direction:column; gap:2px;
+    padding:8px 10px 8px 0;
+    white-space:nowrap;
+  }
+  .crew-label .id{ font-family:'IBM Plex Mono', monospace; font-size:10px; color:var(--text-faint); letter-spacing:0.06em; }
+  .crew-label .name{ font-size:13px; font-weight:500; }
+
+  .cell{
+    width:56px; height:44px;
+    border:1px solid var(--hairline);
+    cursor:pointer;
+    position:relative;
+    transition:filter .12s, transform .12s;
+    opacity:0;
+    animation:reveal .35s ease forwards;
+  }
+  .cell:hover{ filter:brightness(1.35); }
+  .cell:focus-visible{ z-index:2; }
+  .cell.selected{ outline:2px solid var(--cyan); outline-offset:-2px; z-index:1; }
+  .cell .score{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px; font-weight:600;
+    color:rgba(10,13,16,0.78);
+  }
+  .cell.risk-nominal-bg{ background:var(--nominal); }
+  .cell.risk-elevated-bg{ background:var(--elevated); }
+  .cell.risk-high-bg{ background:var(--high); }
+  .cell.risk-critical-bg{ background:var(--critical); }
+
+  @keyframes reveal{
+    from{ opacity:0; transform:translateY(2px); }
+    to{ opacity:1; transform:translateY(0); }
+  }
+
+  .legend{
+    display:flex; gap:16px; flex-wrap:wrap;
+    margin-top:14px;
+    padding-top:12px;
+    border-top:1px solid var(--hairline);
+  }
+  .legend-item{ display:flex; align-items:center; gap:6px; }
+  .legend-swatch{ width:10px; height:10px; }
+  .legend-item span{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim);
+  }
+
+  /* ---------- Detail panel ---------- */
+  .empty-state{
+    color:var(--text-faint);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    letter-spacing:0.04em;
+    padding:24px 4px;
+    line-height:1.7;
+  }
+
+  .detail-name{ font-size:17px; font-weight:600; }
+  .detail-id{ font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--text-dim); letter-spacing:0.06em; margin-bottom:14px; }
+
+  .spark-wrap{ margin:10px 0 16px; }
+  .spark-caption{ display:flex; justify-content:space-between; margin-bottom:6px; }
+  .spark-caption span{ font-family:'IBM Plex Mono', monospace; font-size:10px; letter-spacing:0.06em; color:var(--text-dim); text-transform:uppercase; }
+
+  .subscores{ display:flex; flex-direction:column; gap:9px; margin:14px 0 18px; }
+  .subscore-row{ display:grid; grid-template-columns:104px 1fr 40px; align-items:center; gap:10px; }
+  .subscore-row label{ font-family:'IBM Plex Mono', monospace; font-size:10px; letter-spacing:0.05em; color:var(--text-dim); text-transform:uppercase; }
+  .subscore-track{ height:6px; background:var(--hairline); position:relative; }
+  .subscore-fill{ height:100%; background:var(--cyan); }
+  .subscore-row .num{ font-family:'IBM Plex Mono', monospace; font-size:11px; text-align:right; color:var(--text-dim); }
+
+  button{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    font-weight:600;
+    background:transparent;
+    color:var(--cyan);
+    border:1px solid var(--cyan);
+    padding:9px 14px;
+    cursor:pointer;
+    transition:background .12s, color .12s;
+  }
+  button:hover:not(:disabled){ background:var(--cyan); color:#04141a; }
+  button:disabled{ opacity:0.35; cursor:not-allowed; }
+  button.ghost{ color:var(--text-dim); border-color:var(--hairline-bright); }
+  button.ghost:hover:not(:disabled){ background:var(--panel-raised); color:var(--text); }
+  button.full{ width:100%; }
+
+  .briefing{
+    margin-top:14px;
+    border-top:1px solid var(--hairline);
+    padding-top:14px;
+  }
+  .briefing-block{ margin-bottom:12px; }
+  .briefing-block .eyebrow{ margin-bottom:5px; }
+  .briefing-block p{ font-size:13px; line-height:1.55; }
+  .source-tag{
+    display:inline-block;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    padding:2px 6px;
+    border:1px solid var(--hairline-bright);
+    color:var(--text-dim);
+    margin-left:8px;
+  }
+
+  /* ---------- What-if ---------- */
+  .field{ margin-bottom:14px; }
+  .field label{
+    display:block; font-family:'IBM Plex Mono', monospace; font-size:10px;
+    letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim); margin-bottom:6px;
+  }
+  select, input[type=range]{ width:100%; }
+  select{
+    background:var(--panel-raised);
+    border:1px solid var(--hairline-bright);
+    color:var(--text);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    padding:8px;
+  }
+  .range-row{ display:flex; align-items:center; gap:10px; }
+  .range-row .val{ font-family:'IBM Plex Mono', monospace; font-size:12px; width:44px; text-align:right; color:var(--cyan); }
+
+  .compare-table{ width:100%; border-collapse:collapse; margin-top:14px; font-family:'IBM Plex Mono', monospace; font-size:11px; }
+  .compare-table th{ text-align:right; color:var(--text-dim); font-weight:500; padding:5px 6px; letter-spacing:0.04em; text-transform:uppercase; font-size:9px; }
+  .compare-table th:first-child, .compare-table td:first-child{ text-align:left; }
+  .compare-table td{ text-align:right; padding:5px 6px; border-top:1px solid var(--hairline); }
+  .delta-neg{ color:var(--nominal); }
+  .delta-zero{ color:var(--text-faint); }
+
+  /* ---------- Weight calibration ---------- */
+  .weights-grid{ display:flex; flex-direction:column; gap:12px; }
+  .weight-row{ display:grid; grid-template-columns:96px 1fr 48px; align-items:center; gap:10px; }
+  .weight-row label{ font-family:'IBM Plex Mono', monospace; font-size:10px; letter-spacing:0.05em; color:var(--text-dim); text-transform:uppercase; }
+  .weight-row .pct{ font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--cyan); text-align:right; }
+  .weights-actions{ display:flex; gap:8px; margin-top:16px; }
+
+  /* ---------- Dependency graph ---------- */
+  .graph-node{ cursor:pointer; }
+  .graph-node rect{
+    stroke:var(--hairline-bright);
+    stroke-width:1;
+    transition:filter .12s, stroke-width .12s;
+  }
+  .graph-node:hover rect{ filter:brightness(1.3); }
+  .graph-node.dimmed{ opacity:0.28; }
+  .graph-node.origin rect{ stroke:var(--cyan); stroke-width:2.5; }
+  .graph-node.downstream rect{ stroke:var(--cyan); stroke-width:2; stroke-dasharray:3,2; }
+  .graph-node text{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px;
+    fill:rgba(10,13,16,0.8);
+    pointer-events:none;
+  }
+  .graph-node text.day-label{
+    fill:var(--text-faint);
+    font-size:9px;
+  }
+  .graph-edge{ stroke:var(--hairline-bright); stroke-width:1; transition:stroke .12s, stroke-width .12s; }
+  .graph-edge.highlighted{ stroke:var(--cyan); stroke-width:1.75; }
+  .graph-edge.dimmed{ opacity:0.15; }
+
+  .impact-readout{
+    margin-top:16px;
+    padding-top:14px;
+    border-top:1px solid var(--hairline);
+  }
+  .impact-readout .head{ display:flex; align-items:baseline; gap:10px; margin-bottom:10px; }
+  .impact-readout .head .name{ font-size:14px; font-weight:600; }
+  .impact-list{ display:flex; flex-direction:column; gap:6px; }
+  .impact-row{
+    display:grid; grid-template-columns:36px 1fr 90px 70px; gap:10px; align-items:center;
+    font-family:'IBM Plex Mono', monospace; font-size:11px;
+    padding:6px 8px;
+    background:var(--panel-raised);
+  }
+  .impact-row .tid{ color:var(--cyan); }
+  .impact-row .tname{ color:var(--text); font-family:'IBM Plex Sans', sans-serif; font-size:12px; }
+  .impact-row .tastro{ color:var(--text-dim); }
+
+  .toast{
+    position:fixed; bottom:20px; right:20px;
+    background:var(--panel-raised); border:1px solid var(--hairline-bright);
+    padding:12px 16px; font-family:'IBM Plex Mono', monospace; font-size:12px;
+    color:var(--text); max-width:320px;
+    opacity:0; transform:translateY(8px);
+    transition:opacity .2s, transform .2s;
+    pointer-events:none;
+  }
+  .toast.show{ opacity:1; transform:translateY(0); }
+
+  footer{
+    margin-top:20px; padding-top:16px; border-top:1px solid var(--hairline);
+    display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;
+  }
+  footer span{ font-family:'IBM Plex Mono', monospace; font-size:10px; color:var(--text-faint); letter-spacing:0.05em; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <header>
+    <div class="header-row">
+      <div class="brand">
+        <h1>FATIGUE&nbsp;CONSOLE <span>// crew drift monitor</span></h1>
+        <div class="sub">AUGMENT · NASA HRP FATIGUE MODEL · WATSONX BRIEFING LAYER</div>
+      </div>
+      <div class="status-cluster">
+        <div class="status-item">
+          <span class="eyebrow">Mission Day</span>
+          <span class="val mono" id="statDay">—</span>
+        </div>
+        <div class="status-item">
+          <span class="eyebrow">Overall Status</span>
+          <span class="val" id="statOverall"><span class="risk-pill"><span class="dot"></span>—</span></span>
+        </div>
+        <div class="status-item">
+          <span class="eyebrow">Telemetry Link</span>
+          <div class="link-indicator">
+            <span class="link-dot" id="linkDot"></span>
+            <input id="apiBase" class="mono" value="http://localhost:8000" spellcheck="false">
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT: Risk Matrix + What-If + Weights -->
+    <div style="display:flex; flex-direction:column; gap:18px;">
+
+      <section class="panel">
+        <div class="panel-head">
+          <span class="panel-title">Crew Risk Matrix</span>
+          <button class="ghost" id="refreshBtn">Refresh</button>
+        </div>
+        <div class="panel-body">
+          <div class="matrix-wrap">
+            <table class="matrix" id="matrixTable">
+              <thead><tr><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="legend">
+            <div class="legend-item"><div class="legend-swatch" style="background:var(--nominal)"></div><span>Nominal</span></div>
+            <div class="legend-item"><div class="legend-swatch" style="background:var(--elevated)"></div><span>Elevated</span></div>
+            <div class="legend-item"><div class="legend-swatch" style="background:var(--high)"></div><span>High</span></div>
+            <div class="legend-item"><div class="legend-swatch" style="background:var(--critical)"></div><span>Critical</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <span class="panel-title">What-If Simulator</span>
+        </div>
+        <div class="panel-body">
+          <div class="field">
+            <label>Astronaut</label>
+            <select id="wiAstronaut"></select>
+          </div>
+          <div class="field">
+            <label>Mission Day</label>
+            <select id="wiDay"></select>
+          </div>
+          <div class="field">
+            <label>Reassign To</label>
+            <select id="wiReassign"><option value="">(delay / drop task)</option></select>
+          </div>
+          <div class="field">
+            <label>Task Load Reduction</label>
+            <div class="range-row">
+              <input type="range" id="wiDelta" min="1" max="16" value="8">
+              <span class="val" id="wiDeltaVal">-8</span>
+            </div>
+          </div>
+          <button class="full" id="wiRunBtn">Simulate Intervention</button>
+          <table class="compare-table" id="wiTable" style="display:none;">
+            <thead><tr><th>Day</th><th>Before</th><th>After</th><th>Δ</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <span class="panel-title">Formula Weight Calibration</span>
+        </div>
+        <div class="panel-body">
+          <div class="weights-grid">
+            <div class="weight-row">
+              <label>Reaction Time</label>
+              <input type="range" min="0" max="100" value="40" id="wReaction">
+              <span class="pct" id="wReactionPct">40%</span>
+            </div>
+            <div class="weight-row">
+              <label>Sleep Debt</label>
+              <input type="range" min="0" max="100" value="30" id="wSleep">
+              <span class="pct" id="wSleepPct">30%</span>
+            </div>
+            <div class="weight-row">
+              <label>Circadian</label>
+              <input type="range" min="0" max="100" value="15" id="wCircadian">
+              <span class="pct" id="wCircadianPct">15%</span>
+            </div>
+            <div class="weight-row">
+              <label>Workload</label>
+              <input type="range" min="0" max="100" value="15" id="wWorkload">
+              <span class="pct" id="wWorkloadPct">15%</span>
+            </div>
+          </div>
+          <div class="weights-actions">
+            <button id="applyWeightsBtn">Apply &amp; Recompute</button>
+            <button class="ghost" id="resetWeightsBtn">Reset Defaults</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- RIGHT: Astronaut detail -->
+    <div>
+      <section class="panel">
+        <div class="panel-head">
+          <span class="panel-title">Astronaut Detail</span>
+        </div>
+        <div class="panel-body" id="detailBody">
+          <div class="empty-state">
+            NO&nbsp;CHANNEL&nbsp;SELECTED<br>
+            &gt; click a cell in the crew risk matrix to open a telemetry channel
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel" style="margin-top:18px;">
+    <div class="panel-head">
+      <span class="panel-title">Dependency Graph</span>
+      <div style="display:flex; align-items:center; gap:14px;">
+        <span class="eyebrow" id="graphHint">Click a task to trace its cascade</span>
+        <button class="ghost" id="clearGraphBtn">Clear</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div id="graphWrap" style="overflow-x:auto;"></div>
+      <div id="impactReadout"></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>DRIFT SCORE = w1·REACTION_TIME + w2·SLEEP_DEBT + w3·CIRCADIAN + w4·WORKLOAD</span>
+    <span id="footerMeta">—</span>
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+
+let API_BASE = $('#apiBase').value.trim();
+let crew = [];
+let missionMap = [];       // full /mission response
+let selected = { astronautId:null, day:null };
+
+function riskClass(level){ return 'risk-' + level; }
+
+function showToast(msg){
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=> t.classList.remove('show'), 3200);
+}
+
+async function api(path, opts={}){
+  const res = await fetch(API_BASE + path, {
+    headers: {'Content-Type':'application/json'},
+    ...opts
+  });
+  if(!res.ok){
+    const body = await res.text().catch(()=> '');
+    throw new Error(`${res.status} ${path} ${body}`);
+  }
+  return res.json();
+}
+
+/* ---------------- boot ---------------- */
+$('#apiBase').addEventListener('change', e => {
+  API_BASE = e.target.value.trim().replace(/\/$/,'');
+  boot();
+});
+$('#refreshBtn').addEventListener('click', () => { boot(); loadDependencyGraph(); });
+
+async function boot(){
+  setLink(null);
+  try{
+    const [crewRes, missionRes, summaryRes] = await Promise.all([
+      api('/crew'), api('/mission'), api('/mission/summary')
+    ]);
+    crew = crewRes;
+    missionMap = missionRes;
+    setLink(true);
+    renderHeader(summaryRes, missionRes.length);
+    renderMatrix();
+    populateWhatIf();
+    $('#footerMeta').textContent = `${crew.length} CREW · ${missionRes.length} DAY MISSION`;
+  }catch(err){
+    setLink(false);
+    showToast('TELEMETRY LINK FAILED — ' + err.message);
+  }
+}
+
+function setLink(ok){
+  const dot = $('#linkDot');
+  dot.classList.remove('ok','bad');
+  if(ok === true) dot.classList.add('ok');
+  if(ok === false) dot.classList.add('bad');
+}
+
+function renderHeader(summary, numDays){
+  $('#statDay').textContent = `${numDays} / ${numDays}`;
+  const el = $('#statOverall');
+  el.innerHTML = `<span class="risk-pill ${riskClass(summary.overall_risk_level)}">
+      <span class="dot"></span>${summary.overall_risk_level}
+    </span>`;
+}
+
+/* ---------------- matrix ---------------- */
+function renderMatrix(){
+  const thead = $('#matrixTable thead tr');
+  const tbody = $('#matrixTable tbody');
+  thead.innerHTML = '<th></th>' + missionMap.map(d => `<th class="day-col">D${d.day}</th>`).join('');
+  tbody.innerHTML = '';
+
+  crew.forEach(astro => {
+    const tr = document.createElement('tr');
+    const labelTd = document.createElement('td');
+    labelTd.innerHTML = `<div class="crew-label"><span class="id">${astro.astronaut_id}</span><span class="name">${astro.name}</span></div>`;
+    tr.appendChild(labelTd);
+
+    missionMap.forEach((d, i) => {
+      const cellData = d.per_astronaut[astro.astronaut_id];
+      const td = document.createElement('td');
+      const div = document.createElement('div');
+      div.className = `cell ${riskClass(cellData.risk_level)}-bg`;
+      div.style.animationDelay = (i * 28) + 'ms';
+      div.tabIndex = 0;
+      div.setAttribute('role','button');
+      div.setAttribute('aria-label', `${astro.name} day ${d.day}: ${cellData.risk_level}, drift ${cellData.drift_score}`);
+      div.innerHTML = `<span class="score">${cellData.drift_score.toFixed(2)}</span>`;
+      div.addEventListener('click', () => selectCell(astro.astronaut_id, d.day, div));
+      div.addEventListener('keydown', e => { if(e.key==='Enter' || e.key===' '){ e.preventDefault(); selectCell(astro.astronaut_id, d.day, div);} });
+      td.appendChild(div);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function selectCell(astronautId, day, el){
+  $$('.cell.selected').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selected = { astronautId, day };
+  loadDetail(astronautId, day);
+}
+
+/* ---------------- detail panel ---------------- */
+async function loadDetail(astronautId, day){
+  const body = $('#detailBody');
+  body.innerHTML = `<div class="empty-state">&gt; OPENING CHANNEL ${astronautId}...</div>`;
+  try{
+    const astro = crew.find(c => c.astronaut_id === astronautId);
+    const replay = await api(`/replay/${astronautId}?project_days=2`);
+    const dayPoint = replay.points.find(p => p.day === day) || replay.points[replay.points.length-1];
+
+    const allPoints = replay.points.concat(replay.projected_points);
+    const spark = buildSparkline(allPoints, replay.points.length, day);
+
+    body.innerHTML = `
+      <div class="detail-name">${astro.name}</div>
+      <div class="detail-id">${astro.astronaut_id} · DAY ${dayPoint.day} SELECTED</div>
+
+      <div class="spark-wrap">
+        <div class="spark-caption"><span>Drift Trend</span><span>Dashed = Projected</span></div>
+        ${spark}
+      </div>
+
+      <div class="subscores">
+        ${subscoreRow('Reaction Time', dayPoint.sub_scores.reaction_time)}
+        ${subscoreRow('Sleep Debt', dayPoint.sub_scores.sleep_debt)}
+        ${subscoreRow('Circadian', dayPoint.sub_scores.circadian)}
+        ${subscoreRow('Workload', dayPoint.sub_scores.workload)}
+      </div>
+
+      <button class="full" id="briefBtn">Request AI Briefing</button>
+      <div id="briefingOut"></div>
+    `;
+
+    $('#briefBtn').addEventListener('click', () => requestBriefing(astronautId, dayPoint.day));
+  }catch(err){
+    body.innerHTML = `<div class="empty-state">&gt; CHANNEL ERROR: ${err.message}</div>`;
+  }
+}
+
+function subscoreRow(label, value){
+  const pct = Math.round(value * 100);
+  return `<div class="subscore-row">
+    <label>${label}</label>
+    <div class="subscore-track"><div class="subscore-fill" style="width:${pct}%"></div></div>
+    <span class="num">${value.toFixed(2)}</span>
+  </div>`;
+}
+
+function buildSparkline(points, recordedCount, selectedDay){
+  const w = 280, h = 64, pad = 4;
+  const maxDay = points[points.length-1].day;
+  const minDay = points[0].day;
+  const xFor = d => pad + ( (d - minDay) / Math.max(1,(maxDay-minDay)) ) * (w - pad*2);
+  const yFor = v => h - pad - (v * (h - pad*2));
+
+  const recorded = points.slice(0, recordedCount);
+  const projected = points.slice(recordedCount-1); // include last recorded point as join
+
+  const pathFor = arr => arr.map((p,i) => `${i===0?'M':'L'} ${xFor(p.day).toFixed(1)} ${yFor(p.drift_score).toFixed(1)}`).join(' ');
+
+  const selPoint = points.find(p => p.day === selectedDay);
+  const selMarker = selPoint ? `<circle cx="${xFor(selPoint.day).toFixed(1)}" cy="${yFor(selPoint.drift_score).toFixed(1)}" r="3.5" fill="#5AD1E0"/>` : '';
+
+  const thresholdY = yFor(0.55).toFixed(1);
+
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="overflow:visible;">
+    <line x1="${pad}" y1="${thresholdY}" x2="${w-pad}" y2="${thresholdY}" stroke="#3A4550" stroke-width="1" stroke-dasharray="2,3"/>
+    <path d="${pathFor(recorded)}" fill="none" stroke="#5AD1E0" stroke-width="1.75"/>
+    <path d="${pathFor(projected)}" fill="none" stroke="#5AD1E0" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.6"/>
+    ${selMarker}
+  </svg>`;
+}
+
+async function requestBriefing(astronautId, day){
+  const out = $('#briefingOut');
+  out.innerHTML = `<div class="briefing"><div class="empty-state">&gt; REQUESTING BRIEFING FROM BOB...</div></div>`;
+  try{
+    const res = await api(`/explain/${astronautId}/${day}`);
+    if(!res.triggered){
+      out.innerHTML = `<div class="briefing">
+        <div class="briefing-block">
+          <div class="eyebrow">Status</div>
+          <p>Drift score ${res.drift_score.toFixed(2)} — below alert threshold. No briefing generated.</p>
+        </div>
+      </div>`;
+      return;
+    }
+    out.innerHTML = `<div class="briefing">
+      <div class="briefing-block">
+        <div class="eyebrow">To Astronaut</div>
+        <p>${res.astronaut_message}</p>
+      </div>
+      <div class="briefing-block">
+        <div class="eyebrow">Flight Surgeon Brief<span class="source-tag">${res.source}</span></div>
+        <p>${res.flight_surgeon_brief}</p>
+      </div>
+      <div class="briefing-block">
+        <div class="eyebrow">Suggested Intervention</div>
+        <p>${res.suggested_intervention}</p>
+      </div>
+    </div>`;
+  }catch(err){
+    out.innerHTML = `<div class="briefing"><div class="empty-state">&gt; BRIEFING ERROR: ${err.message}</div></div>`;
+  }
+}
+
+/* ---------------- what-if ---------------- */
+function populateWhatIf(){
+  const astroSel = $('#wiAstronaut');
+  const reassignSel = $('#wiReassign');
+  const daySel = $('#wiDay');
+
+  astroSel.innerHTML = crew.map(c => `<option value="${c.astronaut_id}">${c.astronaut_id} — ${c.name}</option>`).join('');
+  reassignSel.innerHTML = '<option value="">(delay / drop task)</option>' +
+    crew.map(c => `<option value="${c.astronaut_id}">${c.astronaut_id} — ${c.name}</option>`).join('');
+  daySel.innerHTML = missionMap.map(d => `<option value="${d.day}">Day ${d.day}</option>`).join('');
+
+  reassignSel.addEventListener('change', () => {
+    const chosen = astroSel.value;
+    Array.from(reassignSel.options).forEach(o => o.disabled = (o.value === chosen));
+  });
+}
+
+$('#wiDelta').addEventListener('input', e => { $('#wiDeltaVal').textContent = '-' + e.target.value; });
+
+$('#wiRunBtn').addEventListener('click', async () => {
+  const astronaut_id = $('#wiAstronaut').value;
+  const day = parseInt($('#wiDay').value, 10);
+  const reassign_to = $('#wiReassign').value || null;
+  const task_load_delta = -parseInt($('#wiDelta').value, 10);
+
+  const btn = $('#wiRunBtn');
+  btn.disabled = true; btn.textContent = 'Simulating...';
+  try{
+    const res = await api('/whatif/reassign', {
+      method:'POST',
+      body: JSON.stringify({ astronaut_id, day, reassign_to, task_load_delta })
+    });
+    renderWhatIfTable(res.comparison);
+    showToast(`Simulated reassignment for ${astronaut_id} from day ${day}`);
+  }catch(err){
+    showToast('SIMULATION ERROR — ' + err.message);
+  }finally{
+    btn.disabled = false; btn.textContent = 'Simulate Intervention';
+  }
+});
+
+function renderWhatIfTable(comparison){
+  const table = $('#wiTable');
+  const tbody = table.querySelector('tbody');
+  tbody.innerHTML = comparison.map(row => {
+    const cls = row.delta < 0 ? 'delta-neg' : 'delta-zero';
+    const sign = row.delta === 0 ? '' : (row.delta > 0 ? '+' : '');
+    return `<tr>
+      <td>D${row.day}</td>
+      <td>${row.original_drift.toFixed(3)}</td>
+      <td>${row.whatif_drift.toFixed(3)}</td>
+      <td class="${cls}">${sign}${row.delta.toFixed(3)}</td>
+    </tr>`;
+  }).join('');
+  table.style.display = 'table';
+}
+
+/* ---------------- weight calibration ---------------- */
+const weightIds = ['wReaction','wSleep','wCircadian','wWorkload'];
+function normalizedWeights(){
+  const raw = weightIds.map(id => parseInt($('#'+id).value,10));
+  const total = raw.reduce((a,b)=>a+b,0);
+  if(total === 0) return [0.25, 0.25, 0.25, 0.25]; // guard: all sliders at 0 -> fall back to equal weights, not an invalid all-zero vector
+  return raw.map(v => v/total);
+}
+function refreshWeightLabels(){
+  const norm = normalizedWeights();
+  const pctIds = ['wReactionPct','wSleepPct','wCircadianPct','wWorkloadPct'];
+  pctIds.forEach((id,i) => $('#'+id).textContent = Math.round(norm[i]*100) + '%');
+}
+weightIds.forEach(id => $('#'+id).addEventListener('input', refreshWeightLabels));
+
+$('#applyWeightsBtn').addEventListener('click', async () => {
+  const [reaction_time, sleep_debt, circadian, workload] = normalizedWeights();
+  const btn = $('#applyWeightsBtn');
+  btn.disabled = true; btn.textContent = 'Recomputing...';
+  try{
+    await api('/mission/reset', {
+      method:'POST',
+      body: JSON.stringify({ weights: { reaction_time, sleep_debt, circadian, workload } })
+    });
+    showToast('Formula weights applied — mission recomputed');
+    await boot();
+    await loadDependencyGraph();
+    if(selected.astronautId) loadDetail(selected.astronautId, selected.day);
+  }catch(err){
+    showToast('RECALIBRATION ERROR — ' + err.message);
+  }finally{
+    btn.disabled = false; btn.textContent = 'Apply & Recompute';
+  }
+});
+
+$('#resetWeightsBtn').addEventListener('click', () => {
+  $('#wReaction').value = 40; $('#wSleep').value = 30; $('#wCircadian').value = 15; $('#wWorkload').value = 15;
+  refreshWeightLabels();
+});
+
+/* ---------------- dependency graph ---------------- */
+let taskGraph = { nodes: [], edges: [] };
+
+async function loadDependencyGraph(){
+  const wrap = $('#graphWrap');
+  try{
+    taskGraph = await api('/tasks/graph');
+    renderDependencyGraph();
+  }catch(err){
+    wrap.innerHTML = `<div class="empty-state">&gt; GRAPH LINK ERROR: ${err.message}</div>`;
+  }
+}
+
+function renderDependencyGraph(){
+  const wrap = $('#graphWrap');
+  if(!taskGraph.nodes.length){
+    wrap.innerHTML = `<div class="empty-state">&gt; NO TASK GRAPH FOR THIS MISSION</div>`;
+    return;
+  }
+
+  const days = [...new Set(taskGraph.nodes.map(n => n.day))].sort((a,b)=>a-b);
+  const astronautIds = crew.map(c => c.astronaut_id);
+
+  const colW = 118, rowH = 66, nodeW = 96, nodeH = 34;
+  const padL = 70, padT = 30;
+  const w = padL + days.length * colW + 20;
+  const h = padT + astronautIds.length * rowH + 20;
+
+  const posFor = (day, astronautId) => ({
+    x: padL + (days.indexOf(day)) * colW,
+    y: padT + astronautIds.indexOf(astronautId) * rowH,
+  });
+
+  const nodeById = {};
+  taskGraph.nodes.forEach(n => nodeById[n.task_id] = n);
+
+  let svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
+
+  // day column headers
+  days.forEach(d => {
+    const x = padL + days.indexOf(d) * colW + nodeW/2;
+    svg += `<text x="${x}" y="16" text-anchor="middle" class="eyebrow-svg" font-family="IBM Plex Mono" font-size="10" fill="#7C8794" letter-spacing="1">DAY ${d}</text>`;
+  });
+  // astronaut row labels
+  astronautIds.forEach((aid,i) => {
+    const y = padT + i * rowH + nodeH/2 + 4;
+    svg += `<text x="0" y="${y}" font-family="IBM Plex Mono" font-size="10" fill="#7C8794">${aid}</text>`;
+  });
+
+  // edges (drawn first, under nodes)
+  taskGraph.edges.forEach(e => {
+    const from = nodeById[e.depends_on_id], to = nodeById[e.task_id];
+    if(!from || !to) return;
+    const p1 = posFor(from.day, from.astronaut_id);
+    const p2 = posFor(to.day, to.astronaut_id);
+    const x1 = p1.x + nodeW, y1 = p1.y + nodeH/2;
+    const x2 = p2.x, y2 = p2.y + nodeH/2;
+    const midX = (x1+x2)/2;
+    svg += `<path class="graph-edge" data-from="${e.depends_on_id}" data-to="${e.task_id}"
+      d="M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}" fill="none"/>`;
+  });
+
+  // nodes
+  taskGraph.nodes.forEach(n => {
+    const p = posFor(n.day, n.astronaut_id);
+    const riskColorVar = n.risk_level ? `var(--${n.risk_level})` : 'var(--hairline-bright)';
+    svg += `<g class="graph-node" data-task="${n.task_id}" tabindex="0" role="button" aria-label="${n.name}, ${n.task_id}">
+      <rect x="${p.x}" y="${p.y}" width="${nodeW}" height="${nodeH}" fill="${riskColorVar}"></rect>
+      <text x="${p.x + nodeW/2}" y="${p.y + 14}" text-anchor="middle" font-weight="600">${n.task_id}</text>
+      <text x="${p.x + nodeW/2}" y="${p.y + 26}" text-anchor="middle" font-size="8">${truncate(n.name, 16)}</text>
+    </g>`;
+  });
+
+  svg += `</svg>`;
+  wrap.innerHTML = svg;
+
+  $$('.graph-node').forEach(el => {
+    el.addEventListener('click', () => traceCascade(el.dataset.task));
+    el.addEventListener('keydown', e => { if(e.key==='Enter' || e.key===' '){ e.preventDefault(); traceCascade(el.dataset.task); } });
+  });
+}
+
+function truncate(str, n){ return str.length > n ? str.slice(0,n-1) + '…' : str; }
+
+async function traceCascade(taskId){
+  const readout = $('#impactReadout');
+  $('#graphHint').textContent = `Tracing ${taskId}...`;
+  try{
+    const res = await api(`/tasks/${taskId}/impact`);
+    const downstreamIds = new Set(res.downstream.map(d => d.task_id));
+
+    $$('.graph-node').forEach(el => {
+      const tid = el.dataset.task;
+      el.classList.remove('origin','downstream','dimmed');
+      if(tid === taskId) el.classList.add('origin');
+      else if(downstreamIds.has(tid)) el.classList.add('downstream');
+      else el.classList.add('dimmed');
+    });
+    $$('.graph-edge').forEach(el => {
+      const from = el.dataset.from, to = el.dataset.to;
+      const relevant = (from === taskId || downstreamIds.has(from)) && (to === taskId || downstreamIds.has(to));
+      el.classList.toggle('highlighted', relevant);
+      el.classList.toggle('dimmed', !relevant);
+    });
+
+    $('#graphHint').textContent = `${taskId} → ${res.downstream_count} downstream task(s)`;
+
+    if(res.downstream.length === 0){
+      readout.innerHTML = `<div class="impact-readout">
+        <div class="head"><span class="name">${res.task.name}</span><span class="eyebrow">${taskId}</span></div>
+        <p style="font-size:12px; color:var(--text-dim);">No downstream dependencies — slipping this task doesn't cascade.</p>
+      </div>`;
+      return;
+    }
+
+    readout.innerHTML = `<div class="impact-readout">
+      <div class="head"><span class="name">${res.task.name}</span><span class="eyebrow">${taskId} · IF THIS SLIPS →</span></div>
+      <div class="impact-list">
+        ${res.downstream.map(d => `<div class="impact-row">
+          <span class="tid">${d.task_id}</span>
+          <span class="tname">${d.name}</span>
+          <span class="tastro">${d.astronaut_id} · D${d.day}</span>
+          <span class="risk-pill ${riskClass(d.risk_level || 'nominal')}"><span class="dot"></span>${d.risk_level || '—'}</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }catch(err){
+    readout.innerHTML = `<div class="empty-state">&gt; IMPACT LOOKUP ERROR: ${err.message}</div>`;
+  }
+}
+
+$('#clearGraphBtn').addEventListener('click', () => {
+  $$('.graph-node').forEach(el => el.classList.remove('origin','downstream','dimmed'));
+  $$('.graph-edge').forEach(el => el.classList.remove('highlighted','dimmed'));
+  $('#graphHint').textContent = 'Click a task to trace its cascade';
+  $('#impactReadout').innerHTML = '';
+});
+
+refreshWeightLabels();
+boot();
+loadDependencyGraph();
+</script>
+</body>
+</html>

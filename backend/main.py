@@ -2,20 +2,20 @@
 FastAPI backend for the astronaut fatigue drift-detection system.
 
 Architecture:
-  drift.py         -> deterministic math, no AI
-  simulator.py      -> synthetic mission data (stand-in until real sensor
-                        feeds exist -- same generator used by seed.py)
-  db/models.py       \
-  db/session.py        > SQL persistence layer (SQLite by default, swap
-  db/repository.py    /  DATABASE_URL for Postgres/MySQL later, see README)
-  db/seed.py         -> populates the DB with fake mission data
-  seed.py           -> populates the DB with fake mission data
-  projection.py     -> Mission Risk Map + What-If Simulator (no AI)
-  replay.py         -> Historical Replay + trend-based forward projection (no AI)
-  bob.py     -> IBM Bob / watsonx, ONLY called when drift_score crosses
-                        EXPLANATION_TRIGGER_THRESHOLD. Results are cached in
-                        the `explanations` table so the same alert is never
-                        re-explained twice.
+  drift.py             -> deterministic math, no AI
+  simulator.py          -> synthetic mission data (stand-in until real sensor
+                            feeds exist -- same generator used by seed.py)
+  db/models.py           \
+  db/session.py            > SQL persistence layer (SQLite by default, swap
+  db/repository.py        /  DATABASE_URL for Postgres/MySQL later, see README)
+  db/seed.py             -> populates the DB with fake mission data + task DAG
+  projection.py         -> Mission Risk Map + What-If Simulator (no AI)
+  replay.py             -> Historical Replay + trend-based forward projection (no AI)
+  dependency_graph.py   -> task dependency graph + cascading impact analysis (no AI)
+  bob.py                -> IBM Bob / watsonx, ONLY called when drift_score crosses
+                            EXPLANATION_TRIGGER_THRESHOLD. Results are cached in
+                            the `explanations` table so the same alert is never
+                            re-explained twice.
 
 Run: uvicorn main:app --reload --port 8000
 On first run (empty DB) the app auto-seeds a default 3-astronaut, 6-day
@@ -33,10 +33,11 @@ from sqlalchemy.orm import Session
 from drift import DriftWeights, EXPLANATION_TRIGGER_THRESHOLD
 from db.session import init_db, get_db, get_session
 from db.models import Astronaut
-from db.repository import load_crew, load_profile, load_mission_records, get_cached_explanation, save_explanation
+from db.repository import load_crew, load_profile, load_mission_records, get_cached_explanation, save_explanation, load_task_graph
 from bob import explain_drift
 from projection import project_mission_risk, mission_risk_summary, simulate_intervention
 from replay import get_replay, project_forward
+from dependency_graph import compute_impact, at_risk_tasks
 from db import seed as seed_module
 
 # Runtime state: the formula weights currently applied to the seeded data.
@@ -264,4 +265,49 @@ def replay(astronaut_id: str, project_days: int = 0, db: Session = Depends(get_d
         "astronaut_id": timeline.astronaut_id,
         "points": [p.__dict__ for p in timeline.points],
         "projected_points": [p.__dict__ for p in timeline.projected_points],
+    }
+
+
+@app.get("/tasks/graph")
+def tasks_graph(db: Session = Depends(get_db)):
+    """
+    The full task dependency graph -- nodes (each task, annotated with
+    its assigned astronaut's current risk_level on that task's day) and
+    edges (task -> depends_on). Feeds the Dependency Graph visualization.
+    """
+    graph = load_task_graph(db)
+    return {
+        "nodes": [n.__dict__ for n in graph.nodes],
+        "edges": [e.__dict__ for e in graph.edges],
+    }
+
+
+@app.get("/tasks/at-risk")
+def tasks_at_risk(db: Session = Depends(get_db)):
+    """
+    Tasks whose assigned astronaut is currently high/critical risk,
+    ranked by how much downstream work would slip if that task slips --
+    the "identify the task and explain why" piece of the What-If /
+    Dependency Graph feature.
+    """
+    graph = load_task_graph(db)
+    return at_risk_tasks(graph)
+
+
+@app.get("/tasks/{task_id}/impact")
+def task_impact(task_id: str, db: Session = Depends(get_db)):
+    """
+    If this specific task slips, what else slips with it? Returns the
+    task itself plus every downstream task reachable through the
+    dependency graph, each with its own astronaut/day/risk context.
+    """
+    graph = load_task_graph(db)
+    impact = compute_impact(task_id, graph)
+    if impact is None:
+        raise HTTPException(404, "Unknown task_id")
+
+    return {
+        "task": impact.task.__dict__,
+        "downstream": [d.__dict__ for d in impact.downstream],
+        "downstream_count": len(impact.downstream),
     }

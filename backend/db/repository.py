@@ -9,10 +9,11 @@ against the database instead of the old in-memory MISSION_CACHE.
 
 from sqlalchemy.orm import Session
 
-from db.models import Astronaut, MissionDay, DriftScore, Explanation as ExplanationRow
+from db.models import Astronaut, MissionDay, DriftScore, Explanation as ExplanationRow, Task, TaskDependency
 from drift import DriftResult
 from simulator import MissionDayRecord, AstronautProfile
 from bob import Explanation
+from dependency_graph import TaskRecord, DependencyGraph, build_graph
 
 
 def load_crew(db: Session) -> list[Astronaut]:
@@ -84,3 +85,27 @@ def save_explanation(db: Session, astronaut_id: str, day: int, explanation: Expl
 
     db.flush()
     return row
+
+
+def load_task_graph(db: Session) -> DependencyGraph:
+    """Builds the full dependency graph, annotating each task with its
+    assigned astronaut's actual current risk_level on that task's day
+    (so 'at risk' tasks reflect the live, possibly-reweighted mission
+    state, not a stale snapshot)."""
+    task_rows = db.query(Task).order_by(Task.day, Task.task_id).all()
+    tasks = [
+        TaskRecord(task_id=t.task_id, name=t.name, day=t.day, astronaut_id=t.astronaut_id, load=t.load)
+        for t in task_rows
+    ]
+
+    dep_rows = db.query(TaskDependency).all()
+    edges = [(d.task_id, d.depends_on_id) for d in dep_rows]
+
+    drift_rows = (
+        db.query(MissionDay.astronaut_id, MissionDay.day, DriftScore.risk_level)
+        .join(DriftScore, DriftScore.mission_day_id == MissionDay.id)
+        .all()
+    )
+    risk_lookup = {(astronaut_id, day): risk_level for astronaut_id, day, risk_level in drift_rows}
+
+    return build_graph(tasks, edges, risk_lookup)

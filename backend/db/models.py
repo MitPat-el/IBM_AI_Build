@@ -6,11 +6,16 @@ swapping DATABASE_URL from sqlite:/// to postgresql:// or mysql:// later
 requires zero changes here. That swap happens in session.py only.
 
 Tables mirror exactly what the existing pipeline already produces:
-  Astronaut     <- simulator.AstronautProfile
-  MissionDay    <- simulator.MissionDayRecord (raw signals)
-  DriftScore    <- drift.DriftResult (computed sub-scores + composite)
-  Explanation   <- bob.Explanation (cached AI output, so Bob isn't
-                   re-called every time someone re-views the same alert)
+  Astronaut       <- simulator.AstronautProfile
+  MissionDay      <- simulator.MissionDayRecord (raw signals)
+  DriftScore      <- drift.DriftResult (computed sub-scores + composite)
+  Explanation     <- bob.Explanation (cached AI output, so Bob isn't
+                     re-called every time someone re-views the same alert)
+  Task            <- a discrete mission task, assigned to one astronaut on
+                     one day (e.g. "EVA Prep - Suit Check")
+  TaskDependency  <- a directed edge: task_id requires depends_on_id to
+                     finish first. Powers the Dependency Graph / cascading
+                     What-If impact analysis (dependency_graph.py).
 """
 
 from datetime import datetime, timezone
@@ -85,3 +90,28 @@ class Explanation(Base):
     suggested_intervention = Column(String(500), nullable=False)
     source = Column(String(20), nullable=False)  # "watsonx" | "fallback_template"
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class Task(Base):
+    """A discrete mission task, assigned to one astronaut on one day."""
+    __tablename__ = "tasks"
+
+    task_id = Column(String(50), primary_key=True)  # e.g. "T7"
+    name = Column(String(200), nullable=False)
+    day = Column(Integer, nullable=False)
+    astronaut_id = Column(String(50), ForeignKey("astronauts.astronaut_id"), nullable=False)
+    load = Column(Float, nullable=False, default=1.0)
+
+    astronaut = relationship("Astronaut")
+
+
+class TaskDependency(Base):
+    """Directed edge: task_id requires depends_on_id to finish first.
+    If depends_on_id slips, everything reachable forward through these
+    edges is at risk of slipping too -- that's the Dependency Graph."""
+    __tablename__ = "task_dependencies"
+    __table_args__ = (UniqueConstraint("task_id", "depends_on_id", name="uq_task_dependency"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(String(50), ForeignKey("tasks.task_id"), nullable=False)
+    depends_on_id = Column(String(50), ForeignKey("tasks.task_id"), nullable=False)

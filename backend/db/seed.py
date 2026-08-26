@@ -15,7 +15,7 @@ Run (from inside app/):
 import argparse
 
 from db.session import init_db, get_session
-from db.models import Astronaut, MissionDay, DriftScore, Explanation
+from db.models import Astronaut, MissionDay, DriftScore, Explanation, Task, TaskDependency
 from simulator import AstronautProfile, simulate_crew, resolve_seed
 from drift import DriftWeights
 
@@ -23,6 +23,51 @@ DEFAULT_CREW = [
     AstronautProfile(astronaut_id="A1", name="Chen", baseline_pvt_lapses=2.5, seed=1),
     AstronautProfile(astronaut_id="A2", name="Okafor", baseline_pvt_lapses=3.5, resilience=1.15, seed=2),
     AstronautProfile(astronaut_id="A3", name="Ivanova", baseline_pvt_lapses=3.0, resilience=0.9, seed=3),
+]
+
+# A grounded, ISS-ops-style task DAG for the Dependency Graph / cascading
+# What-If impact analysis. Deliberately crosses astronauts and days so a
+# single slipped task can ripple through the rest of the mission -- e.g.
+# T1 (A1, day 1) -> T2 -> T5 -> T7 -> T10 -> T13 -> T16 -> T17 -> T18 is
+# one long critical-path chain spanning all six days and all three crew.
+# Only seeded for the default 3-astronaut crew, and only up to num_days,
+# since a custom crew or shorter mission won't have matching astronaut
+# ids / days for every task.
+DEFAULT_TASKS = [
+    ("T1",  "Power Up External Payload Bay",  1, "A1", 3),
+    ("T2",  "Calibrate Spectrometer",          1, "A2", 2),
+    ("T3",  "Daily Systems Check",             1, "A3", 1),
+    ("T4",  "EVA Prep - Suit Check",           2, "A1", 4),
+    ("T5",  "Airlock Depressurization",        2, "A2", 3),
+    ("T6",  "Sample Collection Log",           2, "A3", 2),
+    ("T7",  "EVA - External Repair",           3, "A1", 6),
+    ("T8",  "Telemetry Sync",                  3, "A2", 2),
+    ("T9",  "Exercise Protocol",               3, "A3", 1),
+    ("T10", "Cargo Transfer",                  4, "A2", 3),
+    ("T11", "Medical Checkup - Crew",          4, "A1", 2),
+    ("T12", "Data Downlink",                   4, "A3", 2),
+    ("T13", "Robotic Arm Ops",                 5, "A1", 5),
+    ("T14", "Experiment Monitoring",           5, "A2", 2),
+    ("T15", "Waste Management",                5, "A3", 1),
+    ("T16", "EVA - Panel Install",              6, "A1", 6),
+    ("T17", "Final Systems Check",             6, "A2", 3),
+    ("T18", "Mission Report Compile",          6, "A3", 2),
+]
+
+# (task_id, depends_on_id) -- task_id requires depends_on_id to finish first
+DEFAULT_DEPENDENCIES = [
+    ("T2", "T1"),
+    ("T4", "T3"),
+    ("T5", "T4"),
+    ("T7", "T5"),
+    ("T10", "T7"),
+    ("T8", "T2"),
+    ("T12", "T8"),
+    ("T13", "T10"),
+    ("T16", "T13"),
+    ("T17", "T16"),
+    ("T18", "T12"),
+    ("T18", "T17"),
 ]
 
 
@@ -33,6 +78,8 @@ def seed(num_days: int = 6, crew=None, wipe_existing: bool = True, weights: Drif
     with get_session() as db:
         if wipe_existing:
             db.query(Explanation).delete()  # clear cached AI explanations -- they'd reference stale drift scores otherwise
+            db.query(TaskDependency).delete()
+            db.query(Task).delete()
             db.query(DriftScore).delete()
             db.query(MissionDay).delete()
             db.query(Astronaut).delete()
@@ -90,6 +137,41 @@ def seed(num_days: int = 6, crew=None, wipe_existing: bool = True, weights: Drif
 
     print(f"Seeded {len(crew)} astronauts x {num_days} days = {row_count} mission-day rows."
           + (f" Skipped {skipped_count} existing rows." if skipped_count else ""))
+
+    _seed_tasks(crew, num_days, wipe_existing)
+
+
+def _seed_tasks(crew, num_days: int, wipe_existing: bool):
+    """Seeds the demo task DAG. Only applies when the crew includes the
+    default astronaut ids (A1/A2/A3) the task list was written for, and
+    only inserts tasks whose day fits within num_days -- a custom crew
+    or a shorter mission just won't get a task graph, rather than
+    inserting tasks that reference astronauts or days that don't exist."""
+    crew_ids = {p.astronaut_id for p in crew}
+    default_ids = {"A1", "A2", "A3"}
+    if not default_ids.issubset(crew_ids):
+        return
+
+    with get_session() as db:
+        if not wipe_existing and db.query(Task).first() is not None:
+            return  # tasks already seeded and we're not wiping -- don't duplicate
+
+        task_count = 0
+        for task_id, name, day, astronaut_id, load in DEFAULT_TASKS:
+            if day > num_days:
+                continue
+            db.add(Task(task_id=task_id, name=name, day=day, astronaut_id=astronaut_id, load=load))
+            task_count += 1
+
+        db.flush()
+        seeded_task_ids = {t[0] for t in DEFAULT_TASKS if t[2] <= num_days}
+        edge_count = 0
+        for task_id, depends_on_id in DEFAULT_DEPENDENCIES:
+            if task_id in seeded_task_ids and depends_on_id in seeded_task_ids:
+                db.add(TaskDependency(task_id=task_id, depends_on_id=depends_on_id))
+                edge_count += 1
+
+    print(f"Seeded {task_count} tasks, {edge_count} dependency edges.")
 
 
 if __name__ == "__main__":

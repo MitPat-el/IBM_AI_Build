@@ -123,3 +123,46 @@ def test_full_mission_risk_map_shape(client):
     assert len(resp) == 6
     for day in resp:
         assert set(day["per_astronaut"].keys()) == {"A1", "A2", "A3"}
+
+
+def test_tasks_graph_is_populated_on_startup(client):
+    resp = client.get("/tasks/graph").json()
+    assert len(resp["nodes"]) == 18
+    assert len(resp["edges"]) == 12
+
+
+def test_task_impact_route_not_shadowed_by_graph_or_at_risk(client):
+    """Regression guard: /tasks/graph and /tasks/at-risk must stay
+    declared before /tasks/{task_id}/impact, the same route-ordering
+    trap that broke /mission/summary earlier."""
+    assert client.get("/tasks/graph").status_code == 200
+    assert client.get("/tasks/at-risk").status_code == 200
+    assert client.get("/tasks/T1/impact").status_code == 200
+
+
+def test_task_impact_matches_the_seeded_critical_path(client):
+    """End-to-end regression test: T1 sits at the head of the demo's
+    critical path (T1 -> T2 -> T8 -> T12 -> T18). If the seeded task
+    DAG or the impact logic ever changes in a way that breaks this
+    chain, the demo's headline moment breaks with it."""
+    resp = client.get("/tasks/T1/impact").json()
+    downstream_ids = {d["task_id"] for d in resp["downstream"]}
+    assert downstream_ids == {"T2", "T8", "T12", "T18"}
+    assert resp["downstream_count"] == 4
+
+
+def test_unknown_task_returns_404(client):
+    assert client.get("/tasks/NOPE/impact").status_code == 404
+
+
+def test_at_risk_tasks_only_includes_high_or_critical(client):
+    resp = client.get("/tasks/at-risk").json()
+    assert len(resp) > 0
+    for task in resp:
+        assert task["risk_level"] in ("high", "critical")
+
+
+def test_at_risk_tasks_sorted_by_downstream_count_descending(client):
+    resp = client.get("/tasks/at-risk").json()
+    counts = [t["downstream_count"] for t in resp]
+    assert counts == sorted(counts, reverse=True)
