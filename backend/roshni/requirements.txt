@@ -1,0 +1,11 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.7.0
+sqlalchemy>=2.0.0
+
+# IBM watsonx AI (uncomment when credentials are available)
+# ibm-watsonx-ai>=1.0.0
+
+# Testing
+pytest>=8.0.0
+httpx>=0.27.0       # required by FastAPI TestClient

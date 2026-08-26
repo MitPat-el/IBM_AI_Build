@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fatigue & Mission Risk — Dev Demo</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; font-size: 14px; background: #f0f2f5; color: #1f2328; }
+
+  header {
+    background: #0f3460; color: #fff; padding: 14px 24px;
+    display: flex; align-items: baseline; gap: 16px;
+  }
+  header h1 { font-size: 17px; font-weight: 600; }
+  header span { font-size: 12px; color: #a0b4cc; }
+
+  .notice {
+    background: #fffbe6; border-left: 4px solid #f0a500;
+    padding: 8px 16px; font-size: 12px; color: #7a5c00;
+  }
+
+  .layout { display: grid; grid-template-columns: 320px 1fr; gap: 0; min-height: calc(100vh - 48px); }
+
+  .sidebar {
+    background: #fff; border-right: 1px solid #e5e7eb;
+    padding: 20px 18px; display: flex; flex-direction: column; gap: 20px;
+  }
+
+  .main { padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+
+  .card {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 16px;
+  }
+  .card h2 { font-size: 13px; font-weight: 600; text-transform: uppercase;
+             letter-spacing: .05em; color: #57606a; margin-bottom: 12px; }
+
+  label { display: block; font-size: 12px; color: #57606a; margin-bottom: 3px; margin-top: 10px; }
+  label:first-of-type { margin-top: 0; }
+
+  input[type=text], input[type=number], select {
+    width: 100%; padding: 6px 8px; border: 1px solid #d0d7de; border-radius: 4px;
+    font-size: 13px; background: #f6f8fa;
+  }
+  input[type=range] { width: 100%; cursor: pointer; }
+  .range-row { display: flex; align-items: center; gap: 8px; }
+  .range-val { min-width: 30px; text-align: right; font-weight: 600; font-size: 13px; }
+
+  button {
+    width: 100%; padding: 9px; border: none; border-radius: 4px;
+    background: #0f3460; color: #fff; font-size: 13px; font-weight: 600;
+    cursor: pointer; margin-top: 4px;
+  }
+  button:hover { background: #16457d; }
+  button:disabled { background: #8fa3b8; cursor: not-allowed; }
+  button.secondary { background: #fff; color: #0f3460; border: 1px solid #0f3460; margin-top: 8px; }
+  button.secondary:hover { background: #eef2f8; }
+
+  .score-big {
+    font-size: 48px; font-weight: 700; line-height: 1;
+    margin-bottom: 4px;
+  }
+  .risk-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 12px; font-weight: 600; letter-spacing: .05em;
+  }
+  .LOW      { background: #d1fae5; color: #065f46; }
+  .MODERATE { background: #fef9c3; color: #713f12; }
+  .HIGH     { background: #fed7aa; color: #7c2d12; }
+  .CRITICAL { background: #fee2e2; color: #7f1d1d; }
+  .UNKNOWN  { background: #f3f4f6; color: #374151; }
+
+  .trend-pill {
+    display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 11px; font-weight: 600; margin-left: 6px;
+    background: #e0e7ef; color: #374151;
+  }
+  .trend-RAPIDLY_RISING { background: #fee2e2; color: #7f1d1d; }
+  .trend-RISING         { background: #fed7aa; color: #7c2d12; }
+  .trend-FALLING        { background: #d1fae5; color: #065f46; }
+  .trend-STABLE         { background: #e0f2fe; color: #0c4a6e; }
+
+  .bar-row { display: grid; grid-template-columns: 130px 1fr 40px; align-items: center;
+             gap: 6px; margin-bottom: 6px; font-size: 12px; }
+  .bar-track { background: #e5e7eb; border-radius: 3px; height: 8px; overflow: hidden; }
+  .bar-fill  { height: 100%; border-radius: 3px; background: #0f3460; transition: width .3s; }
+
+  .dq-row { display: flex; justify-content: space-between; align-items: center;
+            font-size: 12px; color: #57606a; margin-bottom: 4px; }
+  .dq-row strong { color: #1f2328; }
+
+  .factor-tag {
+    display: inline-block; padding: 3px 8px; background: #f0f4ff; border: 1px solid #c7d7f9;
+    border-radius: 12px; font-size: 11px; margin: 2px 2px 2px 0; color: #1d4ed8;
+  }
+
+  .risk-compare {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .risk-box {
+    text-align: center; padding: 10px 16px;
+    background: #f6f8fa; border: 1px solid #e5e7eb; border-radius: 6px;
+  }
+  .risk-box .num { font-size: 28px; font-weight: 700; }
+  .risk-box .lbl { font-size: 11px; color: #57606a; margin-top: 2px; }
+  .arrow { font-size: 24px; color: #57606a; }
+  .delta-pill {
+    padding: 4px 10px; border-radius: 16px; font-weight: 700; font-size: 14px;
+  }
+  .delta-good { background: #d1fae5; color: #065f46; }
+  .delta-bad  { background: #fee2e2; color: #7f1d1d; }
+  .delta-flat { background: #f3f4f6; color: #374151; }
+
+  .violations {
+    margin-top: 8px; background: #fff7ed; border: 1px solid #fed7aa;
+    border-radius: 4px; padding: 8px 10px;
+  }
+  .violations p { font-size: 12px; color: #7c2d12; margin-bottom: 3px; }
+
+  .ai-box {
+    background: #f6f8fa; border: 1px solid #e5e7eb; border-radius: 4px;
+    padding: 12px; font-size: 12px; line-height: 1.7; white-space: pre-wrap;
+    max-height: 320px; overflow-y: auto; color: #374151;
+  }
+
+  select.audience-sel { width: auto; display: inline; }
+
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid #ccc; border-top-color: #0f3460;
+    border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty { color: #9ca3af; font-style: italic; font-size: 12px; }
+
+  .disclaimer {
+    font-size: 11px; color: #9ca3af; margin-top: 10px; line-height: 1.5;
+    border-top: 1px solid #f3f4f6; padding-top: 8px;
+  }
+
+  .tabs { display: flex; gap: 0; border-bottom: 2px solid #e5e7eb; margin-bottom: 14px; }
+  .tab {
+    padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+    border: none; background: none; color: #57606a; border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+  }
+  .tab.active { color: #0f3460; border-bottom-color: #0f3460; }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  hr { border: none; border-top: 1px solid #e5e7eb; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🛸 Astronaut Fatigue &amp; Mission Risk — Developer Demo</h1>
+  <span>Backend test interface · NOT the final UI</span>
+</header>
+
+<div class="notice">
+  ⚠️ <strong>Prototype decision-support tool only.</strong> Not a medical device.
+  All scores are deterministic backend calculations. IBM AI explains results — it never calculates them.
+  Final decisions must remain with qualified human personnel.
+</div>
+
+<div class="layout">
+
+  <!-- ===== SIDEBAR: inputs ===== -->
+  <div class="sidebar">
+
+    <div class="card">
+      <h2>Astronaut</h2>
+      <label>Astronaut ID</label>
+      <input type="text" id="astronaut_id" value="A01">
+
+      <label>Mission Day</label>
+      <input type="number" id="mission_day" value="4" min="1" max="365">
+
+      <label>Previous Fatigue Score (for trend)</label>
+      <input type="number" id="prev_score" value="" min="0" max="100" placeholder="leave blank for first reading">
+    </div>
+
+    <div class="card">
+      <h2>Risk Signals (0–100)</h2>
+
+      <label>PVT / Reaction-time Risk</label>
+      <div class="range-row">
+        <input type="range" id="pvt_risk" min="0" max="100" value="72"
+               oninput="document.getElementById('pvt_val').textContent=this.value">
+        <span class="range-val" id="pvt_val">72</span>
+      </div>
+
+      <label>Sleep Risk</label>
+      <div class="range-row">
+        <input type="range" id="sleep_risk" min="0" max="100" value="65"
+               oninput="document.getElementById('sleep_val').textContent=this.value">
+        <span class="range-val" id="sleep_val">65</span>
+      </div>
+
+      <label>Circadian Alignment Risk</label>
+      <div class="range-row">
+        <input type="range" id="circadian_risk" min="0" max="100" value="80"
+               oninput="document.getElementById('circ_val').textContent=this.value">
+        <span class="range-val" id="circ_val">80</span>
+      </div>
+
+      <label>Workload Risk</label>
+      <div class="range-row">
+        <input type="range" id="workload_risk" min="0" max="100" value="55"
+               oninput="document.getElementById('wl_val').textContent=this.value">
+        <span class="range-val" id="wl_val">55</span>
+      </div>
+
+      <button id="btn_fatigue" onclick="calcFatigue()">Calculate Fatigue Score</button>
+    </div>
+
+    <div class="card">
+      <h2>Task (for Mission Risk)</h2>
+      <label>Task ID</label>
+      <input type="text" id="task_id" value="T-EVA-01">
+
+      <label>Task Name</label>
+      <input type="text" id="task_name" value="EVA Solar Panel Repair">
+
+      <label>Criticality (1–5)</label>
+      <div class="range-row">
+        <input type="range" id="criticality" min="1" max="5" value="5"
+               oninput="document.getElementById('crit_val').textContent=this.value">
+        <span class="range-val" id="crit_val">5</span>
+      </div>
+
+      <label>Cognitive Demand (1–5)</label>
+      <div class="range-row">
+        <input type="range" id="cognitive" min="1" max="5" value="4"
+               oninput="document.getElementById('cog_val').textContent=this.value">
+        <span class="range-val" id="cog_val">4</span>
+      </div>
+
+      <label>Physical Demand (1–5)</label>
+      <div class="range-row">
+        <input type="range" id="physical" min="1" max="5" value="4"
+               oninput="document.getElementById('phys_val').textContent=this.value">
+        <span class="range-val" id="phys_val">4</span>
+      </div>
+
+      <button id="btn_mission" onclick="calcMissionRisk()" disabled>Calculate Mission Risk</button>
+    </div>
+
+  </div><!-- /sidebar -->
+
+  <!-- ===== MAIN: results ===== -->
+  <div class="main">
+
+    <!-- Row 1: Fatigue + Data Quality -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+
+      <div class="card" id="card_fatigue">
+        <h2>Fatigue Drift Score</h2>
+        <div id="fatigue_result" class="empty">Run "Calculate Fatigue Score" to see results.</div>
+      </div>
+
+      <div class="card">
+        <h2>Data Quality / Confidence</h2>
+        <div id="dq_result" class="empty">—</div>
+      </div>
+
+    </div>
+
+    <!-- Row 2: Mission Risk -->
+    <div class="card">
+      <h2>Mission Risk Score</h2>
+      <div id="mission_result" class="empty">Calculate fatigue first, then click "Calculate Mission Risk".</div>
+    </div>
+
+    <!-- Row 3: What-If -->
+    <div class="card">
+      <h2>What-If Simulator</h2>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px;">
+        <div>
+          <label style="margin-top:0">Intervention</label>
+          <select id="whatif_type" onchange="toggleWhatIfFields()">
+            <option value="REASSIGN_TASK">Reassign Task</option>
+            <option value="DELAY_TASK">Delay Task</option>
+            <option value="REDUCE_WORKLOAD">Reduce Workload</option>
+          </select>
+        </div>
+        <div id="field_to_astronaut">
+          <label style="margin-top:0">To Astronaut ID</label>
+          <input type="text" id="to_astronaut" value="A02" style="width:120px">
+        </div>
+        <div id="field_to_quals" style="display:flex;gap:6px;align-items:flex-end;">
+          <div>
+            <label style="margin-top:0">Target Qualifications (comma-sep)</label>
+            <input type="text" id="to_quals" value="EVA" style="width:180px">
+          </div>
+        </div>
+        <div id="field_delay" style="display:none">
+          <label style="margin-top:0">Delay (minutes)</label>
+          <input type="number" id="delay_minutes" value="120" min="1" style="width:100px">
+        </div>
+        <div id="field_workload" style="display:none">
+          <label style="margin-top:0">Workload Reduction (0–100)</label>
+          <input type="number" id="wl_reduction" value="25" min="1" max="100" style="width:100px">
+        </div>
+        <button onclick="runWhatIf()" style="width:auto;padding:8px 18px;margin-top:0" id="btn_whatif" disabled>
+          Simulate
+        </button>
+      </div>
+      <div id="whatif_result" class="empty">Run a simulation to see before/after comparison.</div>
+    </div>
+
+    <!-- Row 4: AI Explanation -->
+    <div class="card">
+      <h2>IBM AI Explanation
+        <span style="font-size:11px;font-weight:400;color:#57606a;margin-left:8px;">
+          (AI explains results · never calculates them)
+        </span>
+      </h2>
+
+      <div class="tabs">
+        <button class="tab active" onclick="setTab('tab_fatigue_explain', this)">Fatigue</button>
+        <button class="tab"        onclick="setTab('tab_intervention_explain', this)">Intervention</button>
+      </div>
+
+      <div id="tab_fatigue_explain" class="tab-panel active">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+          <label style="margin:0">Audience:</label>
+          <select class="audience-sel" id="audience_mode">
+            <option value="MISSION_TEAM">Mission Team</option>
+            <option value="ASTRONAUT">Astronaut</option>
+            <option value="FLIGHT_SURGEON">Flight Surgeon</option>
+          </select>
+          <button onclick="getAIExplain()" style="width:auto;padding:6px 14px;margin:0"
+                  id="btn_ai" disabled>Get AI Explanation</button>
+        </div>
+        <div id="ai_result" class="ai-box empty">Run fatigue calculation first, then request an explanation.</div>
+      </div>
+
+      <div id="tab_intervention_explain" class="tab-panel">
+        <button onclick="getInterventionExplain()" style="width:auto;padding:6px 14px;margin:0 0 10px 0"
+                id="btn_ai_intervention" disabled>Explain Last Simulation</button>
+        <div id="ai_intervention_result" class="ai-box empty">Run a What-If simulation first.</div>
+      </div>
+
+      <p class="disclaimer">
+        AI explanations are generated by IBM watsonx.ai and are for informational purposes only.
+        They do not constitute a medical diagnosis. Final decisions must be made by qualified human personnel.
+        <br>Without WATSONX_API_KEY configured, a stub prompt preview is shown instead.
+      </p>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /layout -->
+
+<script>
+// ============================================================
+// State
+// ============================================================
+let lastFatigueResult   = null;
+let lastMissionPayload  = null;
+let lastMissionResult   = null;
+let lastWhatIfResult    = null;
+
+const API = '';  // same origin
+
+// ============================================================
+// Helpers
+// ============================================================
+function riskClass(level) {
+  return level || 'UNKNOWN';
+}
+
+function fmt(n) {
+  return (typeof n === 'number') ? n.toFixed(1) : n;
+}
+
+function loading(id) {
+  document.getElementById(id).innerHTML = '<span class="spinner"></span> Loading…';
+}
+
+function err(id, msg) {
+  document.getElementById(id).innerHTML =
+    `<span style="color:#b91c1c;font-size:12px">⚠ ${msg}</span>`;
+}
+
+async function post(path, body) {
+  const r = await fetch(API + path, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const detail = await r.json().catch(() => ({}));
+    throw new Error(JSON.stringify(detail, null, 2));
+  }
+  return r.json();
+}
+
+function setTab(panelId, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+  document.getElementById(panelId).classList.add('active');
+  btn.classList.add('active');
+}
+
+function toggleWhatIfFields() {
+  const t = document.getElementById('whatif_type').value;
+  document.getElementById('field_to_astronaut').style.display = t === 'REASSIGN_TASK' ? '' : 'none';
+  document.getElementById('field_to_quals').style.display     = t === 'REASSIGN_TASK' ? '' : 'none';
+  document.getElementById('field_delay').style.display        = t === 'DELAY_TASK'    ? '' : 'none';
+  document.getElementById('field_workload').style.display     = t === 'REDUCE_WORKLOAD' ? '' : 'none';
+}
+
+// ============================================================
+// 1. Fatigue Calculation
+// ============================================================
+async function calcFatigue() {
+  const btn = document.getElementById('btn_fatigue');
+  btn.disabled = true;
+  loading('fatigue_result');
+  loading('dq_result');
+  document.getElementById('ai_result').innerHTML =
+    '<span class="empty">Run fatigue calculation first.</span>';
+
+  const prev = document.getElementById('prev_score').value;
+  const payload = {
+    astronaut_id: document.getElementById('astronaut_id').value,
+    timestamp: new Date().toISOString(),
+    mission_day: parseInt(document.getElementById('mission_day').value),
+    pvt_risk:       parseFloat(document.getElementById('pvt_risk').value),
+    sleep_risk:     parseFloat(document.getElementById('sleep_risk').value),
+    circadian_risk: parseFloat(document.getElementById('circadian_risk').value),
+    workload_risk:  parseFloat(document.getElementById('workload_risk').value),
+    baseline_available: true,
+    task_info_available: true,
+  };
+  if (prev !== '') payload.previous_fatigue_score = parseFloat(prev);
+
+  try {
+    const data = await post('/fatigue/calculate', payload);
+    lastFatigueResult = data;
+    renderFatigue(data);
+    renderDQ(data.data_quality);
+    document.getElementById('btn_mission').disabled = false;
+    document.getElementById('btn_ai').disabled      = false;
+  } catch(e) {
+    err('fatigue_result', e.message);
+    err('dq_result', '—');
+  }
+  btn.disabled = false;
+}
+
+function renderFatigue(d) {
+  const trend = d.trend && d.trend !== 'UNKNOWN'
+    ? `<span class="trend-pill trend-${d.trend}">${d.trend.replace('_', ' ')}</span>`
+    : '<span class="trend-pill">UNKNOWN</span>';
+
+  const factors = (d.top_contributing_factors || [])
+    .map(f => `<span class="factor-tag">${f}</span>`).join('');
+
+  const breakdown = (d.signal_breakdown || []).map(b => `
+    <div class="bar-row">
+      <span>${b.signal}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${b.raw_value}%"></div></div>
+      <span>${b.raw_value}</span>
+    </div>`).join('');
+
+  document.getElementById('fatigue_result').innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+      <div class="score-big" style="color:${scoreColor(d.fatigue_score)}">${fmt(d.fatigue_score)}</div>
+      <div>
+        <span class="risk-badge ${riskClass(d.risk_level)}">${d.risk_level}</span>
+        ${trend}
+      </div>
+    </div>
+    <div style="margin-bottom:10px;font-size:12px;color:#57606a;">
+      <strong>Top contributors:</strong><br>${factors || '<em>none</em>'}
+    </div>
+    <div style="margin-bottom:4px;font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em">
+      Signal Breakdown
+    </div>
+    ${breakdown}
+  `;
+}
+
+function scoreColor(s) {
+  if (s >= 85) return '#b91c1c';
+  if (s >= 70) return '#c2410c';
+  if (s >= 40) return '#a16207';
+  return '#15803d';
+}
+
+function renderDQ(dq) {
+  if (!dq) { document.getElementById('dq_result').innerHTML = '<span class="empty">—</span>'; return; }
+  const notes = (dq.notes || []).map(n =>
+    `<li style="margin-left:14px;margin-top:3px;">${n}</li>`).join('');
+  document.getElementById('dq_result').innerHTML = `
+    <div class="dq-row">
+      <span>Score</span>
+      <strong>${fmt(dq.score)} / 100</strong>
+    </div>
+    <div class="dq-row">
+      <span>Level</span>
+      <span class="risk-badge ${dq.level === 'HIGH' ? 'LOW' : dq.level === 'MEDIUM' ? 'MODERATE' : 'HIGH'}">${dq.level}</span>
+    </div>
+    ${notes ? `<ul style="font-size:11px;color:#57606a;margin-top:8px;">${notes}</ul>` : ''}
+  `;
+}
+
+// ============================================================
+// 2. Mission Risk
+// ============================================================
+async function calcMissionRisk() {
+  if (!lastFatigueResult) return;
+  const btn = document.getElementById('btn_mission');
+  btn.disabled = true;
+  loading('mission_result');
+
+  const aid  = lastFatigueResult.astronaut_id;
+  const tid  = document.getElementById('task_id').value;
+  const tname = document.getElementById('task_name').value;
+
+  const missionPayload = {
+    mission: {
+      mission_id: 'DEMO-01',
+      mission_name: 'Artemis Demo',
+      mission_day: lastFatigueResult.mission_day || 1,
+      total_days: 14,
+      astronauts: [{
+        astronaut_id: aid,
+        name: `Astronaut ${aid}`,
+        role: 'Crew',
+        qualifications: ['EVA', 'ROBOTICS'],
+      }],
+      tasks: [{
+        task_id: tid,
+        name: tname,
+        assigned_astronaut_id: aid,
+        start_time: new Date(Date.now() + 7200000).toISOString(),
+        duration_minutes: 90,
+        criticality:    parseInt(document.getElementById('criticality').value),
+        cognitive_demand: parseInt(document.getElementById('cognitive').value),
+        physical_demand:  parseInt(document.getElementById('physical').value),
+        required_qualifications: ['EVA'],
+        can_delay: true,
+        can_reassign: true,
+        dependencies: [],
+      }],
+    },
+    fatigue_readings: [{
+      astronaut_id: aid,
+      timestamp: lastFatigueResult.timestamp,
+      pvt_risk:       parseFloat(document.getElementById('pvt_risk').value),
+      sleep_risk:     parseFloat(document.getElementById('sleep_risk').value),
+      circadian_risk: parseFloat(document.getElementById('circadian_risk').value),
+      workload_risk:  parseFloat(document.getElementById('workload_risk').value),
+    }],
+  };
+
+  lastMissionPayload = missionPayload;
+
+  try {
+    const data = await post('/mission/risk', missionPayload);
+    lastMissionResult = data;
+    renderMissionRisk(data);
+    document.getElementById('btn_whatif').disabled = false;
+  } catch(e) {
+    err('mission_result', e.message);
+  }
+  btn.disabled = false;
+}
+
+function renderMissionRisk(d) {
+  const factors = (d.contributing_factors || [])
+    .map(f => `<li style="margin-left:14px;margin-top:2px;font-size:12px;">${f}</li>`).join('');
+  const warnings = (d.warnings || []).length
+    ? `<div style="margin-top:8px;font-size:11px;color:#b45309;">
+        <strong>Warnings:</strong>
+        <ul>${d.warnings.map(w => `<li style="margin-left:14px">${w}</li>`).join('')}</ul>
+       </div>` : '';
+
+  const taskDetails = (d.task_risk_details || []).map(t => `
+    <tr>
+      <td style="padding:4px 8px">${t.task_id}</td>
+      <td style="padding:4px 8px">${t.astronaut_id}</td>
+      <td style="padding:4px 8px">${fmt(t.fatigue_score)}</td>
+      <td style="padding:4px 8px">${fmt(t.task_demand_score)}</td>
+      <td style="padding:4px 8px"><strong>${fmt(t.mission_task_risk)}</strong></td>
+      <td style="padding:4px 8px"><span class="risk-badge ${t.risk_level}">${t.risk_level}</span></td>
+    </tr>`).join('');
+
+  document.getElementById('mission_result').innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+      <div class="score-big" style="color:${scoreColor(d.mission_risk_score)}">${fmt(d.mission_risk_score)}</div>
+      <span class="risk-badge ${riskClass(d.risk_level)}">${d.risk_level}</span>
+    </div>
+    ${factors ? `<strong style="font-size:12px">Contributing factors:</strong><ul>${factors}</ul>` : ''}
+    ${warnings}
+    ${taskDetails ? `
+      <hr>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px;">
+        <thead>
+          <tr style="color:#57606a;border-bottom:1px solid #e5e7eb">
+            <th style="padding:4px 8px;text-align:left">Task</th>
+            <th style="padding:4px 8px;text-align:left">Astronaut</th>
+            <th style="padding:4px 8px;text-align:left">Fatigue</th>
+            <th style="padding:4px 8px;text-align:left">Demand</th>
+            <th style="padding:4px 8px;text-align:left">Task Risk</th>
+            <th style="padding:4px 8px;text-align:left">Level</th>
+          </tr>
+        </thead>
+        <tbody>${taskDetails}</tbody>
+      </table>` : ''}
+    <p class="disclaimer">${d.disclaimer}</p>
+  `;
+}
+
+// ============================================================
+// 3. What-If
+// ============================================================
+async function runWhatIf() {
+  if (!lastMissionPayload) return;
+  const btn = document.getElementById('btn_whatif');
+  btn.disabled = true;
+  loading('whatif_result');
+
+  const type = document.getElementById('whatif_type').value;
+  const tid  = document.getElementById('task_id').value;
+  const aid  = lastFatigueResult.astronaut_id;
+
+  const intervention = { intervention_type: type, task_id: tid };
+  if (type === 'REASSIGN_TASK') {
+    intervention.from_astronaut_id = aid;
+    intervention.to_astronaut_id   = document.getElementById('to_astronaut').value;
+    // Add target astronaut to mission so service can validate qualifications
+    const quals = document.getElementById('to_quals').value
+      .split(',').map(q => q.trim()).filter(Boolean);
+    lastMissionPayload.mission.astronauts = lastMissionPayload.mission.astronauts
+      .filter(a => a.astronaut_id !== intervention.to_astronaut_id);
+    lastMissionPayload.mission.astronauts.push({
+      astronaut_id: intervention.to_astronaut_id,
+      name: `Astronaut ${intervention.to_astronaut_id}`,
+      role: 'Crew',
+      qualifications: quals,
+    });
+    lastMissionPayload.fatigue_readings = lastMissionPayload.fatigue_readings
+      .filter(r => r.astronaut_id !== intervention.to_astronaut_id);
+    lastMissionPayload.fatigue_readings.push({
+      astronaut_id: intervention.to_astronaut_id,
+      timestamp: new Date().toISOString(),
+      pvt_risk: 25, sleep_risk: 20, circadian_risk: 15, workload_risk: 20,
+    });
+  } else if (type === 'DELAY_TASK') {
+    intervention.delay_minutes = parseInt(document.getElementById('delay_minutes').value);
+  } else if (type === 'REDUCE_WORKLOAD') {
+    intervention.workload_reduction = parseFloat(document.getElementById('wl_reduction').value);
+  }
+
+  try {
+    const data = await post('/what-if/simulate', {
+      intervention,
+      mission: lastMissionPayload.mission,
+      fatigue_readings: lastMissionPayload.fatigue_readings,
+    });
+    lastWhatIfResult = data;
+    renderWhatIf(data);
+    document.getElementById('btn_ai_intervention').disabled = false;
+  } catch(e) {
+    err('whatif_result', e.message);
+  }
+  btn.disabled = false;
+}
+
+function renderWhatIf(d) {
+  const delta      = d.risk_change;
+  const deltaClass = delta < -1 ? 'delta-good' : delta > 1 ? 'delta-bad' : 'delta-flat';
+  const deltaSign  = delta > 0 ? '+' : '';
+  const feasBadge  = d.feasible
+    ? '<span class="risk-badge LOW">✓ FEASIBLE</span>'
+    : '<span class="risk-badge CRITICAL">✗ NOT FEASIBLE</span>';
+
+  const violations = d.constraint_violations && d.constraint_violations.length
+    ? `<div class="violations">
+        <strong style="font-size:12px">Constraint violations:</strong>
+        ${d.constraint_violations.map(v => `<p>• ${v}</p>`).join('')}
+       </div>` : '';
+
+  document.getElementById('whatif_result').innerHTML = `
+    <div style="margin-bottom:10px">${feasBadge}</div>
+    <div class="risk-compare">
+      <div class="risk-box">
+        <div class="num" style="color:${scoreColor(d.before_mission_risk)}">${fmt(d.before_mission_risk)}</div>
+        <div class="lbl">BEFORE mission risk</div>
+        <div style="font-size:11px;color:#57606a">(fatigue: ${fmt(d.before_fatigue_score)})</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="risk-box">
+        <div class="num" style="color:${scoreColor(d.after_mission_risk)}">${fmt(d.after_mission_risk)}</div>
+        <div class="lbl">AFTER mission risk</div>
+        <div style="font-size:11px;color:#57606a">(fatigue: ${fmt(d.after_fatigue_score)})</div>
+      </div>
+      <span class="delta-pill ${deltaClass}">${deltaSign}${fmt(delta)}</span>
+    </div>
+    ${violations}
+    <p class="disclaimer">${d.disclaimer}</p>
+  `;
+}
+
+// ============================================================
+// 4. AI Explanation
+// ============================================================
+async function getAIExplain() {
+  if (!lastFatigueResult) return;
+  const btn = document.getElementById('btn_ai');
+  btn.disabled = true;
+  loading('ai_result');
+
+  const audience = document.getElementById('audience_mode').value;
+  const taskCtx = `${document.getElementById('task_name').value} — criticality ${
+    document.getElementById('criticality').value}/5`;
+
+  try {
+    const data = await post('/ai/explain', {
+      result: lastFatigueResult,
+      audience,
+      task_context: taskCtx,
+    });
+    document.getElementById('ai_result').className = 'ai-box';
+    document.getElementById('ai_result').textContent = data.explanation;
+  } catch(e) {
+    err('ai_result', e.message);
+  }
+  btn.disabled = false;
+}
+
+async function getInterventionExplain() {
+  if (!lastWhatIfResult) return;
+  const btn = document.getElementById('btn_ai_intervention');
+  btn.disabled = true;
+  loading('ai_intervention_result');
+
+  try {
+    const data = await post('/ai/explain-intervention', {
+      what_if_result: lastWhatIfResult,
+      top_factors: lastFatigueResult ? lastFatigueResult.top_contributing_factors : [],
+    });
+    const text = [
+      '📋 SUMMARY\n'    + data.summary,
+      '\n💡 WHY IT HELPS\n' + data.why_it_helps,
+      '\n⚠ LIMITATIONS\n' + data.limitations,
+      '\n🔒 Human review required: ' + data.human_review_required,
+    ].join('\n');
+    document.getElementById('ai_intervention_result').className = 'ai-box';
+    document.getElementById('ai_intervention_result').textContent = text;
+  } catch(e) {
+    err('ai_intervention_result', e.message);
+  }
+  btn.disabled = false;
+}
+
+// init
+toggleWhatIfFields();
+</script>
+</body>
+</html>
