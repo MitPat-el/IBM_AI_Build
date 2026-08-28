@@ -12,6 +12,7 @@ Architecture:
   projection.py         -> Mission Risk Map + What-If Simulator (no AI)
   replay.py             -> Historical Replay + trend-based forward projection (no AI)
   dependency_graph.py   -> task dependency graph + cascading impact analysis (no AI)
+  feasibility.py        -> reassignment feasibility checker (deterministic, advisory)
   bob.py                -> IBM Bob / watsonx, ONLY called when drift_score crosses
                             EXPLANATION_TRIGGER_THRESHOLD. Results are cached in
                             the `explanations` table so the same alert is never
@@ -28,7 +29,7 @@ from typing import Optional
 
 from fastapi import Body, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -40,6 +41,7 @@ from bob import explain_drift
 from projection import project_mission_risk, mission_risk_summary, simulate_intervention
 from replay import get_replay, project_forward
 from dependency_graph import compute_impact, at_risk_tasks
+from feasibility import check_reassignment_feasibility, ADVISORY_DISCLAIMER
 from db import seed as seed_module
 
 # Runtime state: the formula weights currently applied to the seeded data.
@@ -96,9 +98,9 @@ class WeightsIn(BaseModel):
 
 class TaskReassignRequest(BaseModel):
     astronaut_id: str
-    day: int
-    reassign_to: Optional[str] = None  # None = just delay the task
-    task_load_delta: float = -6.0      # how much load to remove from the source astronaut
+    day: int = Field(..., ge=1)              # must be a positive mission day
+    reassign_to: Optional[str] = None       # None = just delay the task
+    task_load_delta: float = Field(-6.0, le=0.0)  # must be negative: load removed from source
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +242,12 @@ def whatif_reassign(req: TaskReassignRequest, db: Session = Depends(get_db)):
     What-If Simulator: re-run one astronaut's mission with a task load
     reduction (simulating reassignment/delay) and show the new drift
     trajectory from that day forward, so you can show before/after.
+
+    When reassign_to is provided, also runs a deterministic feasibility
+    check (feasibility.py) to evaluate whether the receiving astronaut
+    can safely absorb the load.  The feasibility result is advisory only
+    -- see ADVISORY_DISCLAIMER in feasibility.py.  The trajectory
+    comparison is always returned regardless of feasibility status.
     """
     profile = load_profile(db, req.astronaut_id)
     if profile is None:
@@ -247,6 +255,56 @@ def whatif_reassign(req: TaskReassignRequest, db: Session = Depends(get_db)):
 
     original_records = load_mission_records(db, req.astronaut_id).get(req.astronaut_id, [])
 
+    # --- Feasibility check (only when a specific receiver is named) ---
+    feasibility_result = None
+    if req.reassign_to is not None:
+        # Pre-guard 1: receiver must exist in the crew manifest.
+        receiver_profile = load_profile(db, req.reassign_to)
+        if receiver_profile is None:
+            feasibility_result = {
+                "status": "not_feasible",
+                "receiver": req.reassign_to,
+                "checks": {},
+                "reasons": [f"Receiver '{req.reassign_to}' does not exist in the crew manifest."],
+                "warnings": [],
+                "advisory": ADVISORY_DISCLAIMER,
+            }
+        # Pre-guard 2: receiver must be different from source.
+        elif req.reassign_to == req.astronaut_id:
+            feasibility_result = {
+                "status": "not_feasible",
+                "receiver": req.reassign_to,
+                "checks": {},
+                "reasons": ["Source and receiver are the same astronaut."],
+                "warnings": [],
+                "advisory": ADVISORY_DISCLAIMER,
+            }
+        else:
+            receiver_records = load_mission_records(db, req.reassign_to).get(req.reassign_to, [])
+            graph = load_task_graph(db)
+            fr = check_reassignment_feasibility(
+                source_id=req.astronaut_id,
+                receiver_id=req.reassign_to,
+                day=req.day,
+                task_load_delta=req.task_load_delta,
+                receiver_records=receiver_records,
+                graph=graph,
+            )
+            # Serialise dataclass fields to plain dicts for JSON response.
+            import dataclasses
+            feasibility_result = {
+                "status": fr.status,
+                "receiver": fr.receiver,
+                "checks": {
+                    k: dataclasses.asdict(v) if dataclasses.is_dataclass(v) else v
+                    for k, v in fr.checks.items()
+                },
+                "reasons": fr.reasons,
+                "warnings": fr.warnings,
+                "advisory": fr.advisory,
+            }
+
+    # Always run the trajectory simulation regardless of feasibility status.
     result = simulate_intervention(
         profile,
         original_records,
@@ -259,6 +317,7 @@ def whatif_reassign(req: TaskReassignRequest, db: Session = Depends(get_db)):
         "astronaut_id": result.astronaut_id,
         "day_modified": result.day_modified,
         "reassigned_to": result.reassigned_to,
+        "feasibility": feasibility_result,
         "comparison": result.comparison,
     }
 

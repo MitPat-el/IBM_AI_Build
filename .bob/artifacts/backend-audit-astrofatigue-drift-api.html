@@ -1,0 +1,373 @@
+
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Backend Audit — AstroFatigue Drift API</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #1f2328;
+    background: #ffffff;
+    padding: 32px 16px 48px;
+  }
+  .page { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: #57606a; font-size: 13px; margin-bottom: 32px; border-bottom: 1px solid #e5e7eb; padding-bottom: 16px; }
+  h2 { font-size: 16px; font-weight: 700; margin: 28px 0 10px; color: #1f2328; border-left: 3px solid #3b82d4; padding-left: 10px; }
+  h3 { font-size: 13px; font-weight: 700; color: #1f2328; margin: 14px 0 4px; }
+  p { margin-bottom: 8px; }
+  ul { padding-left: 20px; margin-bottom: 8px; }
+  li { margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; }
+  th { background: #f7f8fa; border: 1px solid #e5e7eb; padding: 7px 10px; text-align: left; font-weight: 600; }
+  td { border: 1px solid #e5e7eb; padding: 7px 10px; vertical-align: top; }
+  tr:nth-child(even) td { background: #fafbfc; }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px;
+    border-radius: 10px; white-space: nowrap;
+  }
+  .det  { background: #e8f4fd; color: #1a73b5; }
+  .ai   { background: #fff3cd; color: #856404; }
+  .bug  { background: #fde8e8; color: #b91c1c; }
+  .gap  { background: #fff0e6; color: #c45100; }
+  .dead { background: #f0f0f0; color: #57606a; }
+  .ok   { background: #e6f4ea; color: #1a6630; }
+  .flow-box {
+    background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 6px;
+    padding: 14px 16px; margin-bottom: 16px; font-size: 13px;
+  }
+  .arrow { color: #3b82d4; font-weight: 700; margin: 0 4px; }
+  .step { display: flex; align-items: flex-start; margin-bottom: 10px; gap: 10px; }
+  .step-num {
+    flex-shrink: 0; width: 22px; height: 22px; background: #3b82d4; color: #fff;
+    border-radius: 50%; font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step-body { flex: 1; }
+  .step-body strong { display: block; margin-bottom: 2px; }
+  .rank-badge {
+    display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px;
+    border-radius: 4px; margin-right: 6px; min-width: 24px; text-align: center;
+  }
+  .rank-high   { background: #b91c1c; color: #fff; }
+  .rank-med    { background: #c45100; color: #fff; }
+  .rank-low    { background: #1a6630; color: #fff; }
+  .section { margin-bottom: 28px; }
+  code { background: #f0f1f3; border-radius: 3px; padding: 1px 5px; font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; }
+  footer { margin-top: 48px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #57606a; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Backend Audit — AstroFatigue Drift API</h1>
+  <p class="subtitle">Point-in-time audit of <code>/backend</code> (7 modules + <code>db/</code>). No files modified. Generated for pre-implementation review.</p>
+
+  
+  <h2>1. What Each File Does</h2>
+  <div class="section">
+  <table>
+    <tr>
+      <th style="width:180px">File</th>
+      <th style="width:100px">Nature</th>
+      <th>Role</th>
+    </tr>
+    <tr>
+      <td><code>drift.py</code></td>
+      <td><span class="badge det">Deterministic</span></td>
+      <td>Core fatigue formula. Accepts four raw signals (PVT lapses, sleep hours, circadian phase shift, task load), weights them via <code>DriftWeights</code>, and emits a 0–1 composite <code>drift_score</code> plus a 4-level <code>risk_level</code>. Models are grounded in Borbely two-process sleep homeostasis and SAFTE/FAST. No AI, no DB, no side effects.</td>
+    </tr>
+    <tr>
+      <td><code>simulator.py</code></td>
+      <td><span class="badge det">Deterministic</span></td>
+      <td>Synthetic mission data generator. Produces a time-series of <code>MissionDayRecord</code> objects for one astronaut, simulating sleep degradation, PVT lapse accumulation, circadian drift, and task spikes. Seeded per astronaut so the same run always produces identical data. Used both for initial DB seeding and for What-If re-simulation.</td>
+    </tr>
+    <tr>
+      <td><code>projection.py</code></td>
+      <td><span class="badge det">Deterministic</span></td>
+      <td>Two features: (1) <strong>Mission Risk Map</strong> — rolls individual per-astronaut drift trajectories into a whole-crew, day-by-day worst-case risk view; (2) <strong>What-If Simulator</strong> — re-runs one astronaut's mission with a modified task-load schedule and returns a before/after drift comparison.</td>
+    </tr>
+    <tr>
+      <td><code>replay.py</code></td>
+      <td><span class="badge det">Deterministic</span></td>
+      <td>Historical Replay timeline. Flattens stored mission records into a scrubbable per-day view (<code>TimelinePoint</code>). Optionally extends it with <code>project_forward()</code>, a simple OLS linear extrapolation of the last 3 recorded days — explicitly not a model, just a trend arrow.</td>
+    </tr>
+    <tr>
+      <td><code>dependency_graph.py</code></td>
+      <td><span class="badge det">Deterministic</span></td>
+      <td>Task DAG logic. Builds a <code>DependencyGraph</code> from task records + edge pairs, annotates each task node with its assigned astronaut's current <code>risk_level</code>, runs a BFS to find all downstream tasks that would slip if a given task slips, and ranks at-risk tasks by downstream impact count.</td>
+    </tr>
+    <tr>
+      <td><code>bob.py</code></td>
+      <td><span class="badge ai">AI (watsonx)</span></td>
+      <td>The only LLM touchpoint. Receives already-computed <code>DriftResult</code> sub-scores and asks IBM Granite to produce two plain-language outputs: a calm astronaut-facing message and a technical flight-surgeon brief. Falls back to a deterministic template when <code>WATSONX_API_KEY</code>/<code>WATSONX_PROJECT_ID</code> are absent. Results are cached in the DB so the same alert is never re-explained twice.</td>
+    </tr>
+    <tr>
+      <td><code>main.py</code></td>
+      <td><span class="badge det">Orchestrator</span></td>
+      <td>FastAPI application. Wires all modules together via 10 HTTP routes. Handles auto-seeding on first run, self-healing of missing task tables, CORS, and global <code>CURRENT_WEIGHTS</code> state. All request-handling is synchronous.</td>
+    </tr>
+    <tr>
+      <td><code>db/session.py</code></td>
+      <td><span class="badge det">Infrastructure</span></td>
+      <td>SQLAlchemy engine + session factory. SQLite default, swappable via <code>DATABASE_URL</code> env var. Provides both a context-manager version and a FastAPI <code>Depends</code> version.</td>
+    </tr>
+    <tr>
+      <td><code>db/models.py</code></td>
+      <td><span class="badge det">Infrastructure</span></td>
+      <td>Six ORM tables: <code>Astronaut</code>, <code>MissionDay</code>, <code>DriftScore</code>, <code>Explanation</code>, <code>Task</code>, <code>TaskDependency</code>. Dialect-neutral, no SQLite-specific types.</td>
+    </tr>
+    <tr>
+      <td><code>db/repository.py</code></td>
+      <td><span class="badge det">Infrastructure</span></td>
+      <td>All DB reads and writes. Reconstructs <code>MissionDayRecord</code> / <code>DriftResult</code> dataclasses from ORM rows so the rest of the app is DB-agnostic. Also builds the <code>DependencyGraph</code> with live risk annotation by joining <code>MissionDay</code> → <code>DriftScore</code>.</td>
+    </tr>
+    <tr>
+      <td><code>db/seed.py</code></td>
+      <td><span class="badge det">Infrastructure</span></td>
+      <td>Populates the database with a 3-astronaut, 6-day synthetic mission plus an 18-task, 12-edge ISS-style DAG. Reuses <code>simulator.py</code>; no separate fake-data generator. Supports wipe-and-reseed or keep-existing modes, and trims task/edge lists to whatever <code>num_days</code> was requested.</td>
+    </tr>
+  </table>
+  </div>
+
+  
+  <h2>2. Full Data Flow</h2>
+  <div class="section">
+  <div class="flow-box">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <strong>Synthetic Mission Data — <code>simulator.py</code></strong>
+        Per astronaut, per day: <code>hours_slept</code> (Gaussian around a declining base), <code>pvt_lapses</code> (baseline + sleep-debt-driven accumulation), <code>minutes_phase_shift</code> (uniform increment minus re-entrainment if good sleep), <code>task_load</code> (from <code>DEFAULT_TASK_SCHEDULE = [8,9,14,15,9,8]</code>). Seeded per astronaut_id for reproducibility.
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <strong>Fatigue Drift Score — <code>drift.py</code> → <code>compute_drift_score()</code></strong>
+        Four normalised sub-scores (0–1 each) are computed from the raw signals, then weighted-summed into a composite <code>drift_score ∈ [0,1]</code>. Default weights: RT=0.40, sleep=0.30, circadian=0.15, workload=0.15. Thresholds: <code>&lt;0.35</code>=nominal, <code>&lt;0.55</code>=elevated, <code>&lt;0.75</code>=high, <code>≥0.75</code>=critical.
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <strong>Persistence — <code>db/seed.py</code> + <code>db/repository.py</code></strong>
+        Simulator output is written to <code>mission_days</code> + <code>drift_scores</code> tables. The 18-task DAG is written to <code>tasks</code> + <code>task_dependencies</code>.
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <strong>Mission Risk — <code>projection.py:project_mission_risk()</code></strong>
+        Reads all crew records from DB via <code>load_mission_records()</code>. For each day, picks the astronaut with the highest <code>drift_score</code> as the overall risk driver. Outputs a <code>DayRiskSnapshot</code> list. <span style="color:#b91c1c;font-weight:600">⚠ Risk is purely fatigue-based at this stage — task criticality and dependency position are not factored in.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <strong>What-If Intervention — <code>projection.py:simulate_intervention()</code></strong>
+        Accepts an <code>astronaut_id</code>, a <code>day</code>, and a <code>task_load_delta</code>. Re-runs <code>simulate_mission()</code> with a modified task schedule for that day and compares the new trajectory to stored original values. <span style="color:#b91c1c;font-weight:600">⚠ Does not verify whether the receiving astronaut (<code>reassign_to</code>) has capacity — it is stored as a label only.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-body">
+        <strong>Dependency Graph — <code>dependency_graph.py</code> + <code>db/repository.py:load_task_graph()</code></strong>
+        Reads tasks and edges from DB. Joins <code>DriftScore.risk_level</code> per (astronaut, day) to annotate each task node. BFS from any task yields downstream tasks. <code>at_risk_tasks()</code> identifies tasks where the assigned astronaut is high/critical, ranked by downstream count. <span style="color:#b91c1c;font-weight:600">⚠ Graph outputs are purely informational — they do not feed back into the mission risk score or the What-If calculator.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">7</div>
+      <div class="step-body">
+        <strong>AI Explanation — <code>bob.py:explain_drift()</code></strong>
+        Called only when <code>drift_score ≥ 0.55</code> (EXPLANATION_TRIGGER_THRESHOLD) and only from <code>GET /explain/{astronaut_id}/{day}</code>. Sends already-computed sub-scores to IBM Granite-13B-Instruct-v2 via synchronous <code>httpx</code>. Falls back to a deterministic template if credentials are absent or the call fails. Result cached in <code>explanations</code> table.
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">8</div>
+      <div class="step-body">
+        <strong>Frontend API Response — <code>main.py</code></strong>
+        Routes serialize dataclass <code>__dict__</code> or hand-constructed dicts into JSON. No schema validation on output (no Pydantic response models). Errors return HTTP 404 for unknown entities; no rate limiting, no auth.
+      </div>
+    </div>
+  </div>
+  </div>
+
+  
+  <h2>3. Bugs, Inconsistencies, Dead Code &amp; Weak Logic</h2>
+  <div class="section">
+  <table>
+    <tr><th style="width:130px">Location</th><th style="width:100px">Category</th><th>Finding</th></tr>
+    <tr>
+      <td><code>bob.py</code> line 151</td>
+      <td><span class="badge bug">Silent failure</span></td>
+      <td><code>except Exception: pass</code> (effectively) swallows every error — network timeout, bad JSON from the model, key error — with zero logging. There is no way to know from the API response whether watsonx was actually called and failed, or was never attempted. The <code>source</code> field says <code>"fallback_template"</code> in both the no-credentials case and the crash case.</td>
+    </tr>
+    <tr>
+      <td><code>projection.py:simulate_intervention()</code></td>
+      <td><span class="badge bug">Logic bug</span></td>
+      <td>The task schedule used for re-simulation is sliced from <code>DEFAULT_TASK_SCHEDULE</code> (a hardcoded 6-element list), not from the stored data. If the mission was seeded with a custom schedule or a non-6-day length, the "original" schedule used for the What-If diverges from reality on every day — meaning even days before the intervention day will show spurious deltas. The test at line 109 of <code>test-api.py</code> catches this for seeds, but not for custom schedules.</td>
+    </tr>
+    <tr>
+      <td><code>projection.py:simulate_intervention()</code></td>
+      <td><span class="badge gap">Feasibility gap</span></td>
+      <td><code>reassign_to</code> is accepted and echoed back but never validated or used in any computation. The function does not look up the receiving astronaut's workload, their current fatigue score, or whether they are on a different shift that day. A reassignment to a critically fatigued crew member is silently accepted and shown as a valid intervention.</td>
+    </tr>
+    <tr>
+      <td><code>replay.py:project_forward()</code> line 118</td>
+      <td><span class="badge bug">Wrong phase label</span></td>
+      <td>Projected points beyond the last mission day are unconditionally labelled <code>phase="in_mission"</code>. If projection extends past mission end they should be <code>"post_mission"</code>, or at minimum a distinct label like <code>"projected"</code> so the frontend can style them differently.</td>
+    </tr>
+    <tr>
+      <td><code>main.py</code> line 48</td>
+      <td><span class="badge gap">Global mutable state</span></td>
+      <td><code>CURRENT_WEIGHTS</code> is a module-level global modified by <code>POST /mission/reset</code> and then read back by <code>POST /whatif/reassign</code>. Under concurrent requests (Uvicorn workers &gt; 1, or multiple async tasks) these two requests could race. Under a single-worker dev setup this is benign, but it's a hidden assumption.</td>
+    </tr>
+    <tr>
+      <td><code>main.py:whatif_reassign()</code></td>
+      <td><span class="badge gap">Missing guard</span></td>
+      <td>If <code>req.day</code> is outside the range of stored records (e.g. <code>day=0</code> or <code>day=99</code>), <code>simulate_intervention()</code> clips to the schedule boundary silently. The API does not return an error — it returns a comparison where <code>day_modified</code> does not correspond to any actual change. The <code>day</code> field has no validation in <code>TaskReassignRequest</code>.</td>
+    </tr>
+    <tr>
+      <td><code>drift.py:workload_score()</code> line 127</td>
+      <td><span class="badge gap">Asymmetric scoring</span></td>
+      <td>Score is <code>clip(ratio - 1.0)</code>, so below-average workload always returns 0.0 — rest days are scored identically to average-workload days. This means a crew member with zero task load looks the same as one at their average load. A small negative contribution (recovery credit) for well-rested, low-workload days would better reflect the two-process model.</td>
+    </tr>
+    <tr>
+      <td><code>simulator.py</code> line 107</td>
+      <td><span class="badge gap">Weak re-entrainment model</span></td>
+      <td>Re-entrainment is a binary step: if <code>hours_slept &gt;= 7.5</code>, subtract exactly 40 minutes of phase shift; otherwise subtract 0. Real circadian re-entrainment is continuous and dose-dependent on light exposure. This produces an unrealistically sharp threshold in the data and can cause phase shift to oscillate rather than accumulate realistically.</td>
+    </tr>
+    <tr>
+      <td><code>dependency_graph.py:downstream_task_ids()</code></td>
+      <td><span class="badge gap">O(n) frontier pop</span></td>
+      <td>The BFS uses <code>frontier.pop(0)</code> on a plain Python <code>list</code>, which is O(n) per call. For the current 18-node demo graph this is irrelevant, but using a <code>collections.deque</code> would be correct BFS practice and avoids a latent performance issue if the graph grows.</td>
+    </tr>
+    <tr>
+      <td><code>bob.py</code></td>
+      <td><span class="badge gap">Sync HTTP in async app</span></td>
+      <td>The watsonx call uses synchronous <code>httpx</code> (blocking I/O) inside a FastAPI route, which is itself async-compatible. This blocks the event loop for up to 30 seconds on a slow API call, preventing any other requests from being served during that window. Should use <code>httpx.AsyncClient</code> or <code>run_in_executor</code>.</td>
+    </tr>
+    <tr>
+      <td><code>main.py</code> line 79</td>
+      <td><span class="badge gap">Open CORS</span></td>
+      <td><code>allow_origins=["*"]</code> is fine for development but the comment says "tighten before demo-day if needed." In a hackathon context with a public URL this is a risk worth tracking.</td>
+    </tr>
+    <tr>
+      <td><code>db/repository.py</code> line 53</td>
+      <td><span class="badge dead">Incomplete persistence</span></td>
+      <td><code>updated_sleep_debt_hours</code> is hardcoded to <code>0.0</code> on DB reads because the value is not persisted. This means if any module reads a record from DB and tries to carry the debt forward, it would start from 0 instead of the correct accumulated value. Currently no such downstream use exists, but it's a silent data loss that could become a bug if that field is ever reused.</td>
+    </tr>
+  </table>
+  </div>
+
+  
+  <h2>4. Specific Evaluation</h2>
+  <div class="section">
+
+  <h3>Is mission risk based only on fatigue, or does it consider task criticality / dependencies?</h3>
+  <p><strong>Fatigue only.</strong> <code>project_mission_risk()</code> in <code>projection.py</code> uses the max <code>drift_score</code> across crew as the day's risk. Task criticality (e.g. EVA vs log entry), task load weight in the DAG, and dependency-chain depth are <em>not</em> factored in. The dependency graph is computed in a parallel branch (<code>/tasks/*</code> routes) and never injected into the mission risk score. A crew member with a high drift score on a trivial task generates the same mission-level risk as the same score on the critical-path EVA.</p>
+
+  <h3>Does the What-If simulator verify whether a reassignment is actually feasible?</h3>
+  <p><strong>No.</strong> <code>simulate_intervention()</code> in <code>projection.py</code> accepts <code>reassign_to</code> as a string label and echoes it back in the response, but performs zero lookups against the receiving astronaut's fatigue state, workload, or schedule. Any string — including a non-existent astronaut ID, a critically fatigued crew member, or the same astronaut as source — is accepted without error or warning.</p>
+
+  <h3>Does the dependency graph affect the risk calculation or is it only visual?</h3>
+  <p><strong>Visualisation only.</strong> The graph annotates nodes with the astronaut's risk level for context, and <code>at_risk_tasks()</code> ranks tasks by downstream impact, but neither of these outputs flows back into <code>project_mission_risk()</code>, <code>simulate_intervention()</code>, or any score calculation. It is read-only enrichment for display, not a causal input to the risk model.</p>
+
+  <h3>When exactly is IBM/watsonx called?</h3>
+  <p>Exactly one trigger condition, in exactly one code path:</p>
+  <ul>
+    <li>Route: <code>GET /explain/{astronaut_id}/{day}</code></li>
+    <li>Condition: <code>drift_score ≥ 0.55</code> (the <code>EXPLANATION_TRIGGER_THRESHOLD</code> constant in <code>drift.py</code>)</li>
+    <li>Cache check: only if no row exists in the <code>explanations</code> table for that (astronaut, day) pair</li>
+    <li>Credentials check: only if both <code>WATSONX_API_KEY</code> and <code>WATSONX_PROJECT_ID</code> env vars are set</li>
+  </ul>
+  <p>Two HTTP calls are made per un-cached explanation: (1) IAM token exchange at <code>iam.cloud.ibm.com</code>, (2) inference call to <code>/ml/v1/text/generation</code>. Both are synchronous and blocking.</p>
+
+  <h3>Which outputs are deterministic vs AI-generated?</h3>
+  <table>
+    <tr><th>Output</th><th>Source</th></tr>
+    <tr><td><code>drift_score</code>, <code>risk_level</code>, all sub-scores</td><td><span class="badge det">Deterministic</span> — pure math in <code>drift.py</code></td></tr>
+    <tr><td>Mission Risk Map (<code>/mission</code>, <code>/mission/summary</code>)</td><td><span class="badge det">Deterministic</span></td></tr>
+    <tr><td>What-If comparison (<code>/whatif/reassign</code>)</td><td><span class="badge det">Deterministic</span></td></tr>
+    <tr><td>Historical Replay + forward projection (<code>/replay</code>)</td><td><span class="badge det">Deterministic</span></td></tr>
+    <tr><td>Dependency graph, impact, at-risk tasks (<code>/tasks/*</code>)</td><td><span class="badge det">Deterministic</span></td></tr>
+    <tr><td><code>astronaut_message</code>, <code>flight_surgeon_brief</code>, <code>suggested_intervention</code> when <code>source="watsonx"</code></td><td><span class="badge ai">AI-generated</span> — IBM Granite via watsonx</td></tr>
+    <tr><td>Same fields when <code>source="fallback_template"</code></td><td><span class="badge det">Deterministic</span> — template in <code>bob.py:_fallback_explanation()</code></td></tr>
+  </table>
+  </div>
+
+  
+  <h2>5. Top 5 Improvements</h2>
+  <div class="section">
+
+  <p style="margin-bottom:14px">Ranked by combined impact across technical execution, innovation, feasibility, and real-world relevance.</p>
+
+  <div style="border:1px solid #e5e7eb;border-radius:6px;margin-bottom:14px;overflow:hidden">
+    <div style="background:#f7f8fa;padding:10px 14px;border-bottom:1px solid #e5e7eb">
+      <span class="rank-badge rank-high">#1</span>
+      <strong>Integrate dependency-graph position into the mission risk score</strong>
+    </div>
+    <div style="padding:12px 14px;font-size:13px">
+      <p><strong>What:</strong> Multiply each astronaut's drift score by a <em>task criticality multiplier</em> before computing the daily max. The multiplier could be as simple as <code>1 + k × downstream_count</code> (a crew member at 0.55 drift on the EVA critical path is more dangerous than one at 0.60 drift on a log entry).</p>
+      <p><strong>Why it matters:</strong> Currently the dependency graph is pure display. Connecting it causally makes the system do something no existing ISS tool does: rank fatigue risk by mission consequence, not just physiological signal. This is the single biggest jump in real-world impact and innovation score.</p>
+      <p><strong>Feasibility:</strong> The data is all present. <code>load_task_graph()</code> already has downstream counts; <code>project_mission_risk()</code> already iterates per-astronaut per-day. Plumbing the graph into the risk rollup is 20–30 lines of code with no new dependencies.</p>
+    </div>
+  </div>
+
+  <div style="border:1px solid #e5e7eb;border-radius:6px;margin-bottom:14px;overflow:hidden">
+    <div style="background:#f7f8fa;padding:10px 14px;border-bottom:1px solid #e5e7eb">
+      <span class="rank-badge rank-high">#2</span>
+      <strong>Add feasibility checking to the What-If Simulator</strong>
+    </div>
+    <div style="padding:12px 14px;font-size:13px">
+      <p><strong>What:</strong> Before accepting a reassignment, look up the receiving astronaut's current drift score and workload for that day. Reject or warn if: (a) the receiver is already high/critical risk, (b) adding the delta would push their load over 2× their rolling average, or (c) they have a dependency-critical task on that same day.</p>
+      <p><strong>Why it matters:</strong> The simulator currently lets you "solve" a fatigue problem by reassigning to someone who is worse off. That is a demo-breaking flaw if a judge tries it. Real operational tools (e.g. NASA's EAST system) gate reassignment on crew availability checks.</p>
+      <p><strong>Feasibility:</strong> All required data is in the DB. Needs a secondary <code>load_mission_records</code> call for <code>reassign_to</code> and 15–20 lines of logic in <code>simulate_intervention()</code>. Return a structured <code>feasibility</code> block in the API response alongside the trajectory comparison.</p>
+    </div>
+  </div>
+
+  <div style="border:1px solid #e5e7eb;border-radius:6px;margin-bottom:14px;overflow:hidden">
+    <div style="background:#f7f8fa;padding:10px 14px;border-bottom:1px solid #e5e7eb">
+      <span class="rank-badge rank-med">#3</span>
+      <strong>Switch Bob to async HTTP and add structured error telemetry</strong>
+    </div>
+    <div style="padding:12px 14px;font-size:13px">
+      <p><strong>What:</strong> Replace synchronous <code>httpx.post()</code> in <code>bob.py</code> with <code>httpx.AsyncClient</code> (or move the call to <code>run_in_executor</code>). Log the exception type and whether fallback was used in the API response (<code>"source": "fallback_template:network_error"</code> vs <code>"fallback_template:no_credentials"</code>).</p>
+      <p><strong>Why it matters:</strong> A 30-second blocking IAM + inference call currently stalls the entire server for all concurrent requests. On demo day with multiple judges hitting the UI simultaneously, this will produce visible latency or timeouts. The telemetry fix makes the AI-vs-fallback distinction transparent, which is important for credibility.</p>
+      <p><strong>Feasibility:</strong> Two-line change for async; four-line change for error telemetry. No architectural risk.</p>
+    </div>
+  </div>
+
+  <div style="border:1px solid #e5e7eb;border-radius:6px;margin-bottom:14px;overflow:hidden">
+    <div style="background:#f7f8fa;padding:10px 14px;border-bottom:1px solid #e5e7eb">
+      <span class="rank-badge rank-med">#4</span>
+      <strong>Persist and carry forward sleep debt across DB reads</strong>
+    </div>
+    <div style="padding:12px 14px;font-size:13px">
+      <p><strong>What:</strong> Add a <code>sleep_debt_hours</code> column to the <code>drift_scores</code> table (the <code>updated_sleep_debt_hours</code> field already exists in <code>DriftResult</code> but is not written). Restore it on read so <code>project_forward()</code> and any future re-simulation from mid-mission can carry the correct accumulated debt rather than starting from 0.</p>
+      <p><strong>Why it matters:</strong> If the system is ever extended to ingest real sensor data mid-mission and re-run the formula from the last stored day, starting with 0 sleep debt will produce incorrect scores. This is a latent correctness bug in the persistence layer that becomes critical the moment the app moves beyond pure retrospective demo data.</p>
+      <p><strong>Feasibility:</strong> One schema migration + three-line write in <code>seed.py</code> + one-line read in <code>repository.py</code>. Entirely additive.</p>
+    </div>
+  </div>
+
+  <div style="border:1px solid #e5e7eb;border-radius:6px;margin-bottom:14px;overflow:hidden">
+    <div style="background:#f7f8fa;padding:10px 14px;border-bottom:1px solid #e5e7eb">
+      <span class="rank-badge rank-low">#5</span>
+      <strong>Expose a multi-astronaut What-If endpoint with crew-level re-balance</strong>
+    </div>
+    <div style="padding:12px 14px;font-size:13px">
+      <p><strong>What:</strong> Add a <code>POST /whatif/crew-rebalance</code> route that accepts a day and automatically finds the best reassignment across the whole crew: for the highest-risk astronaut on that day, enumerate their tasks, and for each task score every other crew member's feasibility (drift headroom + workload capacity + no dependency conflict), picking the optimal swap. Return both the per-astronaut before/after and the updated mission-level risk snapshot.</p>
+      <p><strong>Why it matters:</strong> The current <code>/whatif/reassign</code> is single-astronaut and manual. An automated crew-level optimizer is the "what would NASA's scheduling AI actually do?" answer — a meaningful jump in innovation score and in the story told on demo day. It also showcases the dependency graph as a constraint, not just a display layer.</p>
+      <p><strong>Feasibility:</strong> Can be built entirely on existing primitives — <code>simulate_intervention()</code>, <code>project_mission_risk()</code>, and the task graph. No new data, no new dependencies. The algorithm is a greedy search over a small space (3 astronauts × &lt;18 tasks) so runtime is negligible.</p>
+    </div>
+  </div>
+  </div>
+
+  <footer>Made with IBM Bob</footer>
+</div>
+</body>
+</html>
