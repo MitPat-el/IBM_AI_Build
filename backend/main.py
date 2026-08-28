@@ -13,10 +13,16 @@ Architecture:
   replay.py             -> Historical Replay + trend-based forward projection (no AI)
   dependency_graph.py   -> task dependency graph + cascading impact analysis (no AI)
   feasibility.py        -> reassignment feasibility checker (deterministic, advisory)
-  bob.py                -> IBM Bob / watsonx, ONLY called when drift_score crosses
-                            EXPLANATION_TRIGGER_THRESHOLD. Results are cached in
-                            the `explanations` table so the same alert is never
-                            re-explained twice.
+  bob.py                -> IBM Bob / watsonx.ai explanation layer:
+                            (1) explain_drift()  -- called when drift_score crosses
+                                EXPLANATION_TRIGGER_THRESHOLD; results cached in
+                                the `explanations` table so the same alert is never
+                                re-explained twice.
+                            (2) generate_mission_brief()  -- called from POST
+                                /mission-brief; synthesizes fatigue, mission risk,
+                                What-If, feasibility, and dependency facts into a
+                                structured MissionDecisionBrief; no caching (dynamic
+                                per request context).
 
 Run: uvicorn main:app --reload --port 8000
 On first run (empty DB) the app auto-seeds a default 3-astronaut, 6-day
@@ -38,7 +44,7 @@ from drift import DriftWeights, EXPLANATION_TRIGGER_THRESHOLD
 from db.session import init_db, get_db, get_session
 from db.models import Astronaut, Task, MissionDay
 from db.repository import load_crew, load_profile, load_mission_records, get_cached_explanation, save_explanation, load_task_graph
-from bob import explain_drift
+from bob import explain_drift, generate_mission_brief, BriefContext
 from projection import project_mission_risk, mission_risk_summary, simulate_intervention
 from replay import get_replay, project_forward
 from dependency_graph import compute_impact, at_risk_tasks
@@ -95,6 +101,32 @@ class WeightsIn(BaseModel):
     sleep_debt: float = 0.30
     circadian: float = 0.15
     workload: float = 0.15
+
+
+class BriefRequest(BaseModel):
+    """
+    Request body for POST /mission-brief.
+
+    Only astronaut_id + day are required.  All other fields opt-in to
+    including richer context in the brief:
+      - include_mission_summary: adds the mission-level worst-day snapshot
+      - whatif_task_id / whatif_reassign_to / whatif_task_load_delta:
+            re-runs the What-If Simulator and includes the trajectory diff
+      - impact_task_id: includes the dependency impact for one specific task
+    """
+    astronaut_id: str
+    day: int = Field(..., ge=1)
+
+    # Mission summary context (default on)
+    include_mission_summary: bool = True
+
+    # Optional: What-If context to include in the brief
+    whatif_task_id: Optional[str] = None
+    whatif_reassign_to: Optional[str] = None
+    whatif_task_load_delta: Optional[float] = Field(None, le=0.0)
+
+    # Optional: dependency impact for one task
+    impact_task_id: Optional[str] = None
 
 
 class TaskReassignRequest(BaseModel):
@@ -427,3 +459,147 @@ def task_impact(task_id: str, db: Session = Depends(get_db)):
         "downstream": [d.__dict__ for d in impact.downstream],
         "downstream_count": len(impact.downstream),
     }
+
+
+@app.post("/mission-brief")
+def mission_brief(req: BriefRequest, db: Session = Depends(get_db)):
+    """
+    Generate a Mission Decision Brief for a specific astronaut on a specific day.
+
+    Assembles a BriefContext from deterministic backend results (fatigue state,
+    optional mission summary, optional What-If trajectory, optional feasibility
+    check, optional dependency impact) and passes it to generate_mission_brief()
+    in bob.py, which calls IBM Granite via watsonx.ai or falls back to a
+    deterministic template.
+
+    Granite ONLY interprets the supplied computed facts.  It never calculates,
+    modifies, or overrides any deterministic value.  human_review_required is
+    always True in the response.
+
+    No DB caching -- each request assembles fresh context from the current
+    mission state.
+    """
+    # --- 1. Resolve the subject astronaut's fatigue record for the requested day ---
+    profile = load_profile(db, req.astronaut_id)
+    if profile is None:
+        raise HTTPException(404, "Unknown astronaut_id")
+
+    all_records = load_mission_records(db, req.astronaut_id).get(req.astronaut_id, [])
+    record = next((r for r in all_records if r.day == req.day), None)
+    if record is None:
+        raise HTTPException(404, f"No mission record for day {req.day}")
+
+    sub_scores = {
+        "reaction_time": record.drift.reaction_time_score,
+        "sleep_debt":    record.drift.sleep_debt_score,
+        "circadian":     record.drift.circadian_score,
+        "workload":      record.drift.workload_score,
+    }
+
+    # --- 2. Optional: mission-level risk summary ---
+    mission_summary = None
+    if req.include_mission_summary:
+        mission_summary = mission_risk_summary(load_mission_records(db))
+
+    # --- 3. Optional: What-If trajectory ---
+    whatif_comparison = None
+    whatif_reassign_to = None
+    feasibility_status = None
+    feasibility_reasons = None
+    feasibility_warnings = None
+
+    if req.whatif_task_id or (req.whatif_reassign_to is not None and req.whatif_task_load_delta is not None):
+        # Derive astronaut/day/load from task_id if given, else use req fields
+        if req.whatif_task_id:
+            task_row = db.get(Task, req.whatif_task_id)
+            if task_row is None:
+                raise HTTPException(404, f"Unknown whatif_task_id '{req.whatif_task_id}'")
+            wi_astronaut_id = task_row.astronaut_id
+            wi_day = task_row.day
+            wi_delta = -task_row.load
+        else:
+            wi_astronaut_id = req.astronaut_id
+            wi_day = req.day
+            wi_delta = req.whatif_task_load_delta  # already validated le=0.0
+
+        wi_profile = load_profile(db, wi_astronaut_id)
+        if wi_profile is None:
+            raise HTTPException(404, f"Unknown astronaut for whatif: {wi_astronaut_id}")
+
+        wi_records = load_mission_records(db, wi_astronaut_id).get(wi_astronaut_id, [])
+        base_schedule = seed_module.task_derived_schedules([wi_profile], len(wi_records))[wi_astronaut_id]
+
+        wi_result = simulate_intervention(
+            wi_profile,
+            wi_records,
+            day=wi_day,
+            task_load_delta=wi_delta,
+            reassign_to=req.whatif_reassign_to,
+            weights=CURRENT_WEIGHTS,
+            base_schedule=base_schedule,
+        )
+        whatif_comparison = wi_result.comparison
+        whatif_reassign_to = req.whatif_reassign_to
+
+        # Run feasibility check if a receiver is named
+        if req.whatif_reassign_to:
+            receiver_profile = load_profile(db, req.whatif_reassign_to)
+            if receiver_profile is not None and req.whatif_reassign_to != wi_astronaut_id:
+                receiver_records = load_mission_records(db, req.whatif_reassign_to).get(
+                    req.whatif_reassign_to, []
+                )
+                graph = load_task_graph(db)
+                fr = check_reassignment_feasibility(
+                    source_id=wi_astronaut_id,
+                    receiver_id=req.whatif_reassign_to,
+                    day=wi_day,
+                    task_load_delta=wi_delta,
+                    receiver_records=receiver_records,
+                    graph=graph,
+                )
+                feasibility_status = fr.status
+                feasibility_reasons = fr.reasons
+                feasibility_warnings = fr.warnings
+
+    # --- 4. Optional: dependency impact for a specific task ---
+    impacted_task_name = None
+    impacted_task_id = None
+    downstream_count = None
+    downstream_tasks_list = None
+
+    impact_task_id = req.impact_task_id or req.whatif_task_id
+    if impact_task_id:
+        graph = load_task_graph(db)
+        impact = compute_impact(impact_task_id, graph)
+        if impact is not None:
+            impacted_task_name = impact.task.name
+            impacted_task_id = impact.task.task_id
+            downstream_count = len(impact.downstream)
+            downstream_tasks_list = [d.__dict__ for d in impact.downstream]
+
+    # --- 5. Assemble BriefContext from all collected deterministic facts ---
+    ctx = BriefContext(
+        astronaut_name=profile.name,
+        astronaut_id=req.astronaut_id,
+        day=req.day,
+        drift_score=record.drift.drift_score,
+        risk_level=record.drift.risk_level,
+        sub_scores=sub_scores,
+        mission_overall_risk_level=mission_summary.get("overall_risk_level") if mission_summary else None,
+        mission_worst_day=mission_summary.get("worst_day") if mission_summary else None,
+        mission_worst_drift_score=mission_summary.get("worst_drift_score") if mission_summary else None,
+        whatif_comparison=whatif_comparison,
+        reassigned_to=whatif_reassign_to,
+        feasibility_status=feasibility_status,
+        feasibility_reasons=feasibility_reasons,
+        feasibility_warnings=feasibility_warnings,
+        impacted_task_name=impacted_task_name,
+        impacted_task_id=impacted_task_id,
+        downstream_count=downstream_count,
+        downstream_tasks=downstream_tasks_list,
+    )
+
+    # --- 6. Generate the brief (watsonx or deterministic fallback) ---
+    brief = generate_mission_brief(ctx)
+
+    return dataclasses.asdict(brief)

@@ -266,3 +266,143 @@ def test_whatif_on_a_task_that_is_above_astronaut_average_shows_real_drift_chang
     resp = client.post("/whatif/reassign", json={"task_id": "T16", "reassign_to": "A3"}).json()
     day6 = next(r for r in resp["comparison"] if r["day"] == 6)
     assert day6["delta"] < 0
+
+
+# ---------------------------------------------------------------------------
+# POST /mission-brief -- integration tests
+# ---------------------------------------------------------------------------
+
+_BRIEF_REQUIRED_KEYS = {
+    "astronaut_message", "executive_summary", "primary_drivers",
+    "mission_implications", "intervention_assessment", "recommended_actions",
+    "uncertainties", "human_review_required", "source",
+}
+
+
+def test_mission_brief_minimal_request_returns_valid_structure(client):
+    """Minimum request: astronaut_id + day.  All optional context omitted."""
+    resp = client.post("/mission-brief", json={"astronaut_id": "A1", "day": 4})
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert _BRIEF_REQUIRED_KEYS.issubset(data.keys()), (
+        f"Missing keys: {_BRIEF_REQUIRED_KEYS - data.keys()}"
+    )
+
+
+def test_mission_brief_human_review_required_always_true(client):
+    """human_review_required must be True regardless of source."""
+    resp = client.post("/mission-brief", json={"astronaut_id": "A2", "day": 3})
+    assert resp.json()["human_review_required"] is True
+
+
+def test_mission_brief_source_is_fallback_without_credentials(client):
+    """No watsonx credentials in test env -- must use fallback."""
+    resp = client.post("/mission-brief", json={"astronaut_id": "A3", "day": 2})
+    source = resp.json()["source"]
+    assert source.startswith("fallback_template"), f"Unexpected source: {source}"
+
+
+def test_mission_brief_primary_drivers_is_list(client):
+    resp = client.post("/mission-brief", json={"astronaut_id": "A1", "day": 4})
+    drivers = resp.json()["primary_drivers"]
+    assert isinstance(drivers, list)
+    assert len(drivers) > 0
+
+
+def test_mission_brief_recommended_actions_is_list_of_strings(client):
+    resp = client.post("/mission-brief", json={"astronaut_id": "A1", "day": 4})
+    actions = resp.json()["recommended_actions"]
+    assert isinstance(actions, list)
+    assert all(isinstance(a, str) for a in actions)
+
+
+def test_mission_brief_uncertainties_contains_prototype_disclaimer(client):
+    resp = client.post("/mission-brief", json={"astronaut_id": "A1", "day": 4})
+    unc_text = " ".join(resp.json()["uncertainties"]).lower()
+    assert "prototype" in unc_text
+
+
+def test_mission_brief_with_mission_summary_included(client):
+    """include_mission_summary=True (default) should populate executive_summary
+    with mission-level risk context."""
+    resp = client.post("/mission-brief", json={
+        "astronaut_id": "A1", "day": 4, "include_mission_summary": True
+    })
+    assert resp.status_code == 200
+    # executive_summary must be non-empty
+    assert resp.json()["executive_summary"]
+
+
+def test_mission_brief_with_whatif_task_id(client):
+    """Supplying whatif_task_id should include What-If context in the brief."""
+    resp = client.post("/mission-brief", json={
+        "astronaut_id": "A1", "day": 6,
+        "whatif_task_id": "T16",
+        "whatif_reassign_to": "A3",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    # intervention_assessment must not say "No What-If context supplied"
+    assert "No What-If context supplied" not in data["intervention_assessment"]
+
+
+def test_mission_brief_with_impact_task_id(client):
+    """Supplying impact_task_id=T7 should include downstream task context
+    (T7 has 5 downstream tasks in the seeded DAG)."""
+    resp = client.post("/mission-brief", json={
+        "astronaut_id": "A1", "day": 3,
+        "impact_task_id": "T7",
+    })
+    assert resp.status_code == 200
+    implications = " ".join(resp.json()["mission_implications"])
+    # The fallback brief should mention the task and downstream count
+    assert "EVA - External Repair" in implications or "5" in implications
+
+
+def test_mission_brief_unknown_astronaut_returns_404(client):
+    resp = client.post("/mission-brief", json={"astronaut_id": "ZZZ", "day": 1})
+    assert resp.status_code == 404
+
+
+def test_mission_brief_unknown_day_returns_404(client):
+    resp = client.post("/mission-brief", json={"astronaut_id": "A1", "day": 99})
+    assert resp.status_code == 404
+
+
+def test_mission_brief_invalid_day_zero_returns_422(client):
+    resp = client.post("/mission-brief", json={"astronaut_id": "A1", "day": 0})
+    assert resp.status_code == 422
+
+
+def test_mission_brief_unknown_whatif_task_id_returns_404(client):
+    resp = client.post("/mission-brief", json={
+        "astronaut_id": "A1", "day": 1, "whatif_task_id": "NOPE"
+    })
+    assert resp.status_code == 404
+
+
+def test_mission_brief_existing_explain_endpoint_still_works(client):
+    """/explain must remain unbroken -- the brief is a parallel feature."""
+    resp = client.get("/explain/A1/6")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "astronaut_message" in data
+    assert "flight_surgeon_brief" in data
+    assert "suggested_intervention" in data
+
+
+def test_mission_brief_does_not_affect_cached_explanations(client):
+    """Calling /mission-brief must not write to or clear the explanations table."""
+    import sqlite3, os
+    # Seed an explanation
+    client.get("/explain/A1/6")
+    # Call mission-brief
+    client.post("/mission-brief", json={"astronaut_id": "A1", "day": 6})
+    # The explanation row must still be there, unmodified
+    db_path = os.environ["DATABASE_URL"].replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    count = conn.execute(
+        "SELECT COUNT(*) FROM explanations WHERE astronaut_id='A1' AND day=6"
+    ).fetchone()[0]
+    conn.close()
+    assert count == 1
