@@ -10,3 +10,15 @@ python -m http.server 5500
 http://localhost:5500
 
 NOTE: For Dependency Graph to show, press simulate, the apply & recompute
+
+
+IMPORTANT FOR SRIHAS + MIT
+
+For Postgres:
+pip install psycopg2-binary
+
+For MySQL:
+pip install pymysql
+
+Whichever database you use, change it in session.py to connect
+DATABASE_URL
