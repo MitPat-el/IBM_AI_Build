@@ -124,14 +124,23 @@ def simulate_intervention(
     task_load_delta: float = -6.0,
     reassign_to: Optional[str] = None,
     weights: DriftWeights = DriftWeights(),
+    base_schedule: Optional[list[float]] = None,
 ) -> WhatIfResult:
     """
     Re-run one astronaut's mission with reduced task load on `day` onward
     from that point (simulating handing a task off to `reassign_to`, or
     just delaying/dropping it if reassign_to is None), and diff against
     the original trajectory.
+
+    base_schedule should match whatever schedule actually generated
+    original_records -- e.g. a per-astronaut, task-derived schedule from
+    db.seed.task_derived_schedules() -- or the "before intervention day"
+    values won't agree with what's actually stored, and every day (not
+    just the modified one) would show a spurious delta. Defaults to the
+    shared DEFAULT_TASK_SCHEDULE for direct/standalone use.
     """
-    schedule = list(DEFAULT_TASK_SCHEDULE[:len(original_records)])
+    source_schedule = base_schedule if base_schedule is not None else DEFAULT_TASK_SCHEDULE
+    schedule = list(source_schedule[:len(original_records)])
     if 1 <= day <= len(schedule):
         schedule[day - 1] = max(0.0, schedule[day - 1] + task_load_delta)
 

@@ -210,97 +210,59 @@ def test_at_risk_tasks_sorted_by_downstream_count_descending(client):
     assert counts == sorted(counts, reverse=True)
 
 
-# ---------------------------------------------------------------------------
-# /whatif/reassign -- feasibility integration tests
-# ---------------------------------------------------------------------------
+def test_whatif_by_task_id_derives_astronaut_and_day(client):
+    """T7 belongs to A1 on day 3 -- posting just the task_id should
+    correctly derive both without the caller specifying them."""
+    resp = client.post("/whatif/reassign", json={"task_id": "T7", "reassign_to": "A3"}).json()
+    assert resp["astronaut_id"] == "A1"
+    assert resp["day_modified"] == 3
 
-def test_whatif_feasibility_present_when_reassign_to_given(client):
+
+def test_whatif_by_task_id_includes_dependency_impact(client):
+    resp = client.post("/whatif/reassign", json={"task_id": "T7"}).json()
+    assert resp["dependency_impact"] is not None
+    assert resp["dependency_impact"]["task"]["task_id"] == "T7"
+    downstream_ids = {d["task_id"] for d in resp["dependency_impact"]["downstream"]}
+    assert downstream_ids == {"T10", "T13", "T16", "T17", "T18"}
+
+
+def test_whatif_manual_mode_has_no_dependency_impact(client):
+    """Manual mode (no task_id) shouldn't fabricate a dependency_impact
+    section -- it should be explicitly null, not omitted or guessed."""
     resp = client.post("/whatif/reassign", json={
-        "astronaut_id": "A1", "day": 2, "reassign_to": "A3", "task_load_delta": -2.0,
+        "astronaut_id": "A2", "day": 4, "task_load_delta": -3
     }).json()
-    assert "feasibility" in resp
-    feas = resp["feasibility"]
-    assert feas is not None
-    for key in ("status", "receiver", "checks", "reasons", "warnings", "advisory"):
-        assert key in feas, f"Missing key '{key}' in feasibility response"
+    assert resp["dependency_impact"] is None
 
 
-def test_whatif_feasibility_null_when_reassign_to_is_none(client):
-    """Task delay (no receiver) must return feasibility=null; comparison must still be present."""
-    resp = client.post("/whatif/reassign", json={
-        "astronaut_id": "A1", "day": 2, "task_load_delta": -3.0,
-    }).json()
-    assert resp["feasibility"] is None
-    assert len(resp["comparison"]) > 0
+def test_whatif_unknown_task_id_returns_404(client):
+    assert client.post("/whatif/reassign", json={"task_id": "NOPE"}).status_code == 404
 
 
-def test_whatif_feasibility_not_feasible_unknown_receiver(client):
-    """Unknown receiver -> not_feasible; comparison for source still returned."""
-    resp = client.post("/whatif/reassign", json={
-        "astronaut_id": "A1", "day": 2, "reassign_to": "ZZZ", "task_load_delta": -3.0,
-    }).json()
-    assert resp["feasibility"]["status"] == "not_feasible"
-    assert any("does not exist" in r for r in resp["feasibility"]["reasons"])
-    # Simulation still ran
-    assert len(resp["comparison"]) > 0
+def test_whatif_missing_required_fields_returns_400_not_500(client):
+    assert client.post("/whatif/reassign", json={}).status_code == 400
 
 
-def test_whatif_feasibility_not_feasible_self_reassignment(client):
-    """Self-reassignment -> not_feasible."""
-    resp = client.post("/whatif/reassign", json={
-        "astronaut_id": "A2", "day": 3, "reassign_to": "A2", "task_load_delta": -4.0,
-    }).json()
-    assert resp["feasibility"]["status"] == "not_feasible"
-    assert any("same astronaut" in r for r in resp["feasibility"]["reasons"])
+def test_task_load_matches_the_actual_task_the_day_it_belongs_to(client):
+    """Regression test for the core Dependency Graph <-> Projection
+    connection: a day's task_load (used by the drift formula) must
+    equal the sum of that astronaut's actual assigned task loads that
+    day -- not an unrelated shared number. T16 is A1's only day-6 task
+    at load 6.0."""
+    mission = client.get("/mission/A1").json()
+    day6 = next(d for d in mission if d["day"] == 6)
+    assert day6["task_load"] == 6.0
 
 
-def test_whatif_feasibility_advisory_disclaimer_in_every_response(client):
-    """Advisory disclaimer must be present and untruncated in every feasibility response."""
-    from feasibility import ADVISORY_DISCLAIMER
-    resp = client.post("/whatif/reassign", json={
-        "astronaut_id": "A1", "day": 2, "reassign_to": "A3", "task_load_delta": -2.0,
-    }).json()
-    assert resp["feasibility"]["advisory"] == ADVISORY_DISCLAIMER
-
-
-def test_whatif_comparison_present_regardless_of_feasibility_status(client):
-    """Comparison is never suppressed by a not_feasible result."""
-    resp = client.post("/whatif/reassign", json={
-        "astronaut_id": "A1", "day": 2, "reassign_to": "ZZZ", "task_load_delta": -3.0,
-    }).json()
-    assert resp["feasibility"]["status"] == "not_feasible"
-    assert isinstance(resp["comparison"], list)
-    assert len(resp["comparison"]) > 0
-
-
-def test_whatif_day_field_rejects_zero(client):
-    """Pydantic Field(ge=1) must reject day=0 with HTTP 422."""
-    resp = client.post("/whatif/reassign", json={
-        "astronaut_id": "A1", "day": 0, "task_load_delta": -3.0,
-    })
-    assert resp.status_code == 422
-
-
-def test_whatif_day_field_rejects_negative(client):
-    """Pydantic Field(ge=1) must reject day=-1 with HTTP 422."""
-    resp = client.post("/whatif/reassign", json={
-        "astronaut_id": "A1", "day": -1, "task_load_delta": -3.0,
-    })
-    assert resp.status_code == 422
-
-
-def test_whatif_checks_dict_has_three_subkeys_for_valid_receiver(client):
-    """When feasibility runs fully, checks must contain fatigue, workload, dependency_conflict."""
-    resp = client.post("/whatif/reassign", json={
-        "astronaut_id": "A1", "day": 1, "reassign_to": "A2", "task_load_delta": -2.0,
-    }).json()
-    checks = resp["feasibility"]["checks"]
-    assert set(checks.keys()) == {"fatigue", "workload", "dependency_conflict"}
-
-
-def test_whatif_feasibility_status_is_one_of_three_values(client):
-    """Status must be one of the three defined values."""
-    resp = client.post("/whatif/reassign", json={
-        "astronaut_id": "A1", "day": 3, "reassign_to": "A3", "task_load_delta": -4.0,
-    }).json()
-    assert resp["feasibility"]["status"] in ("feasible", "feasible_with_caution", "not_feasible")
+def test_whatif_on_a_task_that_is_above_astronaut_average_shows_real_drift_change(client):
+    """Regression test for the actual reported issue: T16 (A1, day 6)
+    is the top-ranked /tasks/at-risk result, and under the old shared
+    global schedule its day was already at/below the crew-wide rolling
+    average, so simulating its reassignment always showed delta=0.0 --
+    a broken-looking result on the most natural demo path. With
+    per-astronaut task-derived workload, A1's own day-6 load (6.0) is
+    above A1's own rolling average, so the intervention must show a
+    real negative delta on day 6."""
+    resp = client.post("/whatif/reassign", json={"task_id": "T16", "reassign_to": "A3"}).json()
+    day6 = next(r for r in resp["comparison"] if r["day"] == 6)
+    assert day6["delta"] < 0

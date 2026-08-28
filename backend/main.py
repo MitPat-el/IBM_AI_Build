@@ -23,6 +23,7 @@ On first run (empty DB) the app auto-seeds a default 3-astronaut, 6-day
 fake mission so there's never a blank/broken demo state.
 """
 
+import dataclasses
 import os
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -97,10 +98,11 @@ class WeightsIn(BaseModel):
 
 
 class TaskReassignRequest(BaseModel):
-    astronaut_id: str
-    day: int = Field(..., ge=1)              # must be a positive mission day
-    reassign_to: Optional[str] = None       # None = just delay the task
-    task_load_delta: float = Field(-6.0, le=0.0)  # must be negative: load removed from source
+    task_id: Optional[str] = None        # if given, astronaut_id/day/task_load_delta are derived from this task
+    astronaut_id: Optional[str] = None   # required if task_id is not given
+    day: Optional[int] = Field(None, ge=1)              # required if task_id is not given; must be a positive mission day
+    reassign_to: Optional[str] = None    # None = just delay the task
+    task_load_delta: Optional[float] = Field(None, le=0.0)  # manual mode only; must be negative if given; defaults to -6.0 if omitted
 
 
 # ---------------------------------------------------------------------------
@@ -243,17 +245,41 @@ def whatif_reassign(req: TaskReassignRequest, db: Session = Depends(get_db)):
     reduction (simulating reassignment/delay) and show the new drift
     trajectory from that day forward, so you can show before/after.
 
-    When reassign_to is provided, also runs a deterministic feasibility
-    check (feasibility.py) to evaluate whether the receiving astronaut
-    can safely absorb the load.  The feasibility result is advisory only
-    -- see ADVISORY_DISCLAIMER in feasibility.py.  The trajectory
-    comparison is always returned regardless of feasibility status.
+    This is where the Dependency Graph connects to the drift model: pass
+    a real task_id (from /tasks/graph) instead of a manual astronaut_id/
+    day/task_load_delta, and the astronaut, day, and load are derived
+    from that actual task -- the response then includes not just the
+    drift-score comparison but every downstream task that gets protected
+    by the intervention, via the same graph used by /tasks/{id}/impact.
+
+    When reassign_to is provided (task_id mode or manual mode), also runs
+    a deterministic feasibility check (feasibility.py) to evaluate
+    whether the receiving astronaut can safely absorb the load. The
+    feasibility result is advisory only -- see ADVISORY_DISCLAIMER in
+    feasibility.py. The trajectory comparison is always returned
+    regardless of feasibility status.
     """
-    profile = load_profile(db, req.astronaut_id)
+    if req.task_id:
+        task_row = db.get(Task, req.task_id)
+        if task_row is None:
+            raise HTTPException(404, "Unknown task_id")
+        astronaut_id = task_row.astronaut_id
+        day = task_row.day
+        task_load_delta = -task_row.load
+    else:
+        if not req.astronaut_id or req.day is None:
+            raise HTTPException(400, "Provide either task_id, or astronaut_id and day")
+        astronaut_id = req.astronaut_id
+        day = req.day
+        task_load_delta = req.task_load_delta if req.task_load_delta is not None else -6.0
+
+    profile = load_profile(db, astronaut_id)
     if profile is None:
         raise HTTPException(404, "Unknown astronaut_id")
 
-    original_records = load_mission_records(db, req.astronaut_id).get(req.astronaut_id, [])
+    original_records = load_mission_records(db, astronaut_id).get(astronaut_id, [])
+
+    base_schedule = seed_module.task_derived_schedules([profile], len(original_records))[astronaut_id]
 
     # --- Feasibility check (only when a specific receiver is named) ---
     feasibility_result = None
@@ -270,7 +296,7 @@ def whatif_reassign(req: TaskReassignRequest, db: Session = Depends(get_db)):
                 "advisory": ADVISORY_DISCLAIMER,
             }
         # Pre-guard 2: receiver must be different from source.
-        elif req.reassign_to == req.astronaut_id:
+        elif req.reassign_to == astronaut_id:
             feasibility_result = {
                 "status": "not_feasible",
                 "receiver": req.reassign_to,
@@ -283,15 +309,14 @@ def whatif_reassign(req: TaskReassignRequest, db: Session = Depends(get_db)):
             receiver_records = load_mission_records(db, req.reassign_to).get(req.reassign_to, [])
             graph = load_task_graph(db)
             fr = check_reassignment_feasibility(
-                source_id=req.astronaut_id,
+                source_id=astronaut_id,
                 receiver_id=req.reassign_to,
-                day=req.day,
-                task_load_delta=req.task_load_delta,
+                day=day,
+                task_load_delta=task_load_delta,
                 receiver_records=receiver_records,
                 graph=graph,
             )
             # Serialise dataclass fields to plain dicts for JSON response.
-            import dataclasses
             feasibility_result = {
                 "status": fr.status,
                 "receiver": fr.receiver,
@@ -308,17 +333,31 @@ def whatif_reassign(req: TaskReassignRequest, db: Session = Depends(get_db)):
     result = simulate_intervention(
         profile,
         original_records,
-        day=req.day,
-        task_load_delta=req.task_load_delta,
+        day=day,
+        task_load_delta=task_load_delta,
         reassign_to=req.reassign_to,
         weights=CURRENT_WEIGHTS,
+        base_schedule=base_schedule,
     )
+
+    dependency_impact = None
+    if req.task_id:
+        graph = load_task_graph(db)
+        impact = compute_impact(req.task_id, graph)
+        if impact is not None:
+            dependency_impact = {
+                "task": impact.task.__dict__,
+                "downstream": [d.__dict__ for d in impact.downstream],
+                "downstream_count": len(impact.downstream),
+            }
+
     return {
         "astronaut_id": result.astronaut_id,
         "day_modified": result.day_modified,
         "reassigned_to": result.reassigned_to,
         "feasibility": feasibility_result,
         "comparison": result.comparison,
+        "dependency_impact": dependency_impact,
     }
 
 

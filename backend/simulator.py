@@ -140,8 +140,23 @@ def simulate_crew(
     profiles: list[AstronautProfile],
     num_days: int = 6,
     weights: DriftWeights = DriftWeights(),
+    task_schedules: Optional[dict[str, list[float]]] = None,
 ) -> dict[str, list[MissionDayRecord]]:
-    return {p.astronaut_id: simulate_mission(p, num_days=num_days, weights=weights) for p in profiles}
+    """
+    task_schedules, if given, overrides the shared DEFAULT_TASK_SCHEDULE
+    with a per-astronaut daily workload list -- e.g. derived from actual
+    assigned tasks in the Dependency Graph, so each astronaut's workload
+    signal reflects their own real task load instead of an identical
+    number shared across the whole crew.
+    """
+    task_schedules = task_schedules or {}
+    return {
+        p.astronaut_id: simulate_mission(
+            p, num_days=num_days, weights=weights,
+            task_schedule=task_schedules.get(p.astronaut_id),
+        )
+        for p in profiles
+    }
 
 
 if __name__ == "__main__":

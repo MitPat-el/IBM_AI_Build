@@ -71,6 +71,40 @@ DEFAULT_DEPENDENCIES = [
 ]
 
 
+def task_derived_schedules(crew, num_days: int) -> dict[str, list[float]]:
+    """
+    Sums each astronaut's actual assigned task loads per day into a
+    per-astronaut daily workload schedule, so the drift formula's
+    workload signal reflects real task assignments instead of a single
+    number shared identically across the whole crew. This is what makes
+    the Dependency Graph and the fatigue model agree with each other --
+    without it, a task's `load` (used for cascading impact analysis) and
+    the day's `task_load` (used for the drift score) are two unrelated
+    numbers that happen to share a name.
+
+    Falls back to simulator.DEFAULT_TASK_SCHEDULE's value for any
+    astronaut-day combination with no assigned tasks (keeps behavior
+    sane for missions longer than the seeded task set, or gaps in it).
+    """
+    from simulator import DEFAULT_TASK_SCHEDULE
+
+    crew_ids = {p.astronaut_id for p in crew}
+    schedules = {aid: [0.0] * num_days for aid in crew_ids}
+    covered = {aid: [False] * num_days for aid in crew_ids}
+
+    for task_id, name, day, astronaut_id, load in DEFAULT_TASKS:
+        if astronaut_id in schedules and day <= num_days:
+            schedules[astronaut_id][day - 1] += load
+            covered[astronaut_id][day - 1] = True
+
+    for aid in crew_ids:
+        for i in range(num_days):
+            if not covered[aid][i]:
+                schedules[aid][i] = DEFAULT_TASK_SCHEDULE[min(i, len(DEFAULT_TASK_SCHEDULE) - 1)]
+
+    return schedules
+
+
 def seed(num_days: int = 6, crew=None, wipe_existing: bool = True, weights: DriftWeights = DriftWeights()):
     crew = crew or DEFAULT_CREW
     init_db()
@@ -84,7 +118,11 @@ def seed(num_days: int = 6, crew=None, wipe_existing: bool = True, weights: Drif
             db.query(MissionDay).delete()
             db.query(Astronaut).delete()
 
-        mission_data = simulate_crew(crew, num_days=num_days, weights=weights)
+        crew_ids = {p.astronaut_id for p in crew}
+        default_ids = {"A1", "A2", "A3"}
+        task_schedules = task_derived_schedules(crew, num_days) if default_ids.issubset(crew_ids) else None
+
+        mission_data = simulate_crew(crew, num_days=num_days, weights=weights, task_schedules=task_schedules)
 
         for profile in crew:
             existing = db.get(Astronaut, profile.astronaut_id)
