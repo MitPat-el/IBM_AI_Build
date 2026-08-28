@@ -208,3 +208,99 @@ def test_at_risk_tasks_sorted_by_downstream_count_descending(client):
     resp = client.get("/tasks/at-risk").json()
     counts = [t["downstream_count"] for t in resp]
     assert counts == sorted(counts, reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# /whatif/reassign -- feasibility integration tests
+# ---------------------------------------------------------------------------
+
+def test_whatif_feasibility_present_when_reassign_to_given(client):
+    resp = client.post("/whatif/reassign", json={
+        "astronaut_id": "A1", "day": 2, "reassign_to": "A3", "task_load_delta": -2.0,
+    }).json()
+    assert "feasibility" in resp
+    feas = resp["feasibility"]
+    assert feas is not None
+    for key in ("status", "receiver", "checks", "reasons", "warnings", "advisory"):
+        assert key in feas, f"Missing key '{key}' in feasibility response"
+
+
+def test_whatif_feasibility_null_when_reassign_to_is_none(client):
+    """Task delay (no receiver) must return feasibility=null; comparison must still be present."""
+    resp = client.post("/whatif/reassign", json={
+        "astronaut_id": "A1", "day": 2, "task_load_delta": -3.0,
+    }).json()
+    assert resp["feasibility"] is None
+    assert len(resp["comparison"]) > 0
+
+
+def test_whatif_feasibility_not_feasible_unknown_receiver(client):
+    """Unknown receiver -> not_feasible; comparison for source still returned."""
+    resp = client.post("/whatif/reassign", json={
+        "astronaut_id": "A1", "day": 2, "reassign_to": "ZZZ", "task_load_delta": -3.0,
+    }).json()
+    assert resp["feasibility"]["status"] == "not_feasible"
+    assert any("does not exist" in r for r in resp["feasibility"]["reasons"])
+    # Simulation still ran
+    assert len(resp["comparison"]) > 0
+
+
+def test_whatif_feasibility_not_feasible_self_reassignment(client):
+    """Self-reassignment -> not_feasible."""
+    resp = client.post("/whatif/reassign", json={
+        "astronaut_id": "A2", "day": 3, "reassign_to": "A2", "task_load_delta": -4.0,
+    }).json()
+    assert resp["feasibility"]["status"] == "not_feasible"
+    assert any("same astronaut" in r for r in resp["feasibility"]["reasons"])
+
+
+def test_whatif_feasibility_advisory_disclaimer_in_every_response(client):
+    """Advisory disclaimer must be present and untruncated in every feasibility response."""
+    from feasibility import ADVISORY_DISCLAIMER
+    resp = client.post("/whatif/reassign", json={
+        "astronaut_id": "A1", "day": 2, "reassign_to": "A3", "task_load_delta": -2.0,
+    }).json()
+    assert resp["feasibility"]["advisory"] == ADVISORY_DISCLAIMER
+
+
+def test_whatif_comparison_present_regardless_of_feasibility_status(client):
+    """Comparison is never suppressed by a not_feasible result."""
+    resp = client.post("/whatif/reassign", json={
+        "astronaut_id": "A1", "day": 2, "reassign_to": "ZZZ", "task_load_delta": -3.0,
+    }).json()
+    assert resp["feasibility"]["status"] == "not_feasible"
+    assert isinstance(resp["comparison"], list)
+    assert len(resp["comparison"]) > 0
+
+
+def test_whatif_day_field_rejects_zero(client):
+    """Pydantic Field(ge=1) must reject day=0 with HTTP 422."""
+    resp = client.post("/whatif/reassign", json={
+        "astronaut_id": "A1", "day": 0, "task_load_delta": -3.0,
+    })
+    assert resp.status_code == 422
+
+
+def test_whatif_day_field_rejects_negative(client):
+    """Pydantic Field(ge=1) must reject day=-1 with HTTP 422."""
+    resp = client.post("/whatif/reassign", json={
+        "astronaut_id": "A1", "day": -1, "task_load_delta": -3.0,
+    })
+    assert resp.status_code == 422
+
+
+def test_whatif_checks_dict_has_three_subkeys_for_valid_receiver(client):
+    """When feasibility runs fully, checks must contain fatigue, workload, dependency_conflict."""
+    resp = client.post("/whatif/reassign", json={
+        "astronaut_id": "A1", "day": 1, "reassign_to": "A2", "task_load_delta": -2.0,
+    }).json()
+    checks = resp["feasibility"]["checks"]
+    assert set(checks.keys()) == {"fatigue", "workload", "dependency_conflict"}
+
+
+def test_whatif_feasibility_status_is_one_of_three_values(client):
+    """Status must be one of the three defined values."""
+    resp = client.post("/whatif/reassign", json={
+        "astronaut_id": "A1", "day": 3, "reassign_to": "A3", "task_load_delta": -4.0,
+    }).json()
+    assert resp["feasibility"]["status"] in ("feasible", "feasible_with_caution", "not_feasible")
