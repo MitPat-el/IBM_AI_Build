@@ -1,5 +1,3 @@
-/*Just a mock frontend */
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -465,6 +463,10 @@
         </div>
         <div class="panel-body">
           <div class="field">
+            <label>Task</label>
+            <select id="wiTask"><option value="">(manual mode -- pick astronaut/day below)</option></select>
+          </div>
+          <div class="field">
             <label>Astronaut</label>
             <select id="wiAstronaut"></select>
           </div>
@@ -476,7 +478,7 @@
             <label>Reassign To</label>
             <select id="wiReassign"><option value="">(delay / drop task)</option></select>
           </div>
-          <div class="field">
+          <div class="field" id="wiDeltaField">
             <label>Task Load Reduction</label>
             <div class="range-row">
               <input type="range" id="wiDelta" min="1" max="16" value="8">
@@ -488,6 +490,7 @@
             <thead><tr><th>Day</th><th>Before</th><th>After</th><th>Δ</th></tr></thead>
             <tbody></tbody>
           </table>
+          <div id="wiDependencyOut"></div>
         </div>
       </section>
 
@@ -601,7 +604,7 @@ $('#apiBase').addEventListener('change', e => {
   API_BASE = e.target.value.trim().replace(/\/$/,'');
   boot();
 });
-$('#refreshBtn').addEventListener('click', () => { boot(); loadDependencyGraph(); });
+$('#refreshBtn').addEventListener('click', boot);
 
 async function boot(){
   setLink(null);
@@ -614,6 +617,7 @@ async function boot(){
     setLink(true);
     renderHeader(summaryRes, missionRes.length);
     renderMatrix();
+    await loadDependencyGraph(); // populateWhatIf() below needs taskGraph.nodes populated first
     populateWhatIf();
     $('#footerMeta').textContent = `${crew.length} CREW · ${missionRes.length} DAY MISSION`;
   }catch(err){
@@ -783,10 +787,13 @@ async function requestBriefing(astronautId, day){
 
 /* ---------------- what-if ---------------- */
 function populateWhatIf(){
+  const taskSel = $('#wiTask');
   const astroSel = $('#wiAstronaut');
   const reassignSel = $('#wiReassign');
   const daySel = $('#wiDay');
 
+  taskSel.innerHTML = '<option value="">(manual mode -- pick astronaut/day below)</option>' +
+    taskGraph.nodes.map(n => `<option value="${n.task_id}">${n.task_id} — ${n.name} (${n.astronaut_id}, D${n.day})</option>`).join('');
   astroSel.innerHTML = crew.map(c => `<option value="${c.astronaut_id}">${c.astronaut_id} — ${c.name}</option>`).join('');
   reassignSel.innerHTML = '<option value="">(delay / drop task)</option>' +
     crew.map(c => `<option value="${c.astronaut_id}">${c.astronaut_id} — ${c.name}</option>`).join('');
@@ -796,31 +803,75 @@ function populateWhatIf(){
     const chosen = astroSel.value;
     Array.from(reassignSel.options).forEach(o => o.disabled = (o.value === chosen));
   });
+
+  taskSel.addEventListener('change', () => setWhatIfMode(taskSel.value));
+  setWhatIfMode(''); // default to manual mode until a task is picked
+}
+
+function setWhatIfMode(taskId){
+  const manualMode = !taskId;
+  $('#wiAstronaut').disabled = !manualMode;
+  $('#wiDay').disabled = !manualMode;
+  $('#wiDeltaField').style.opacity = manualMode ? '1' : '0.4';
+  $('#wiDelta').disabled = !manualMode;
+
+  if(!manualMode){
+    const node = taskGraph.nodes.find(n => n.task_id === taskId);
+    if(node){
+      $('#wiAstronaut').value = node.astronaut_id;
+      $('#wiDay').value = node.day;
+    }
+  }
 }
 
 $('#wiDelta').addEventListener('input', e => { $('#wiDeltaVal').textContent = '-' + e.target.value; });
 
 $('#wiRunBtn').addEventListener('click', async () => {
-  const astronaut_id = $('#wiAstronaut').value;
-  const day = parseInt($('#wiDay').value, 10);
+  const taskId = $('#wiTask').value;
   const reassign_to = $('#wiReassign').value || null;
-  const task_load_delta = -parseInt($('#wiDelta').value, 10);
+
+  const body = taskId
+    ? { task_id: taskId, reassign_to }
+    : {
+        astronaut_id: $('#wiAstronaut').value,
+        day: parseInt($('#wiDay').value, 10),
+        reassign_to,
+        task_load_delta: -parseInt($('#wiDelta').value, 10),
+      };
 
   const btn = $('#wiRunBtn');
   btn.disabled = true; btn.textContent = 'Simulating...';
   try{
-    const res = await api('/whatif/reassign', {
-      method:'POST',
-      body: JSON.stringify({ astronaut_id, day, reassign_to, task_load_delta })
-    });
+    const res = await api('/whatif/reassign', { method:'POST', body: JSON.stringify(body) });
     renderWhatIfTable(res.comparison);
-    showToast(`Simulated reassignment for ${astronaut_id} from day ${day}`);
+    renderWhatIfDependencyImpact(res.dependency_impact);
+    showToast(`Simulated intervention for ${res.astronaut_id} from day ${res.day_modified}`);
   }catch(err){
     showToast('SIMULATION ERROR — ' + err.message);
   }finally{
     btn.disabled = false; btn.textContent = 'Simulate Intervention';
   }
 });
+
+function renderWhatIfDependencyImpact(impact){
+  const out = $('#wiDependencyOut');
+  if(!impact){ out.innerHTML = ''; return; }
+  if(impact.downstream.length === 0){
+    out.innerHTML = `<div class="impact-readout"><p style="font-size:12px; color:var(--text-dim);">No downstream tasks depend on ${impact.task.task_id} — no cascade to protect.</p></div>`;
+    return;
+  }
+  out.innerHTML = `<div class="impact-readout">
+    <div class="head"><span class="eyebrow">${impact.downstream.length} downstream task(s) protected by this intervention</span></div>
+    <div class="impact-list">
+      ${impact.downstream.map(d => `<div class="impact-row">
+        <span class="tid">${d.task_id}</span>
+        <span class="tname">${d.name}</span>
+        <span class="tastro">${d.astronaut_id} · D${d.day}</span>
+        <span class="risk-pill ${riskClass(d.risk_level || 'nominal')}"><span class="dot"></span>${d.risk_level || '—'}</span>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
 
 function renderWhatIfTable(comparison){
   const table = $('#wiTable');
@@ -864,7 +915,6 @@ $('#applyWeightsBtn').addEventListener('click', async () => {
     });
     showToast('Formula weights applied — mission recomputed');
     await boot();
-    await loadDependencyGraph();
     if(selected.astronautId) loadDetail(selected.astronautId, selected.day);
   }catch(err){
     showToast('RECALIBRATION ERROR — ' + err.message);
@@ -965,6 +1015,16 @@ function truncate(str, n){ return str.length > n ? str.slice(0,n-1) + '…' : st
 async function traceCascade(taskId){
   const readout = $('#impactReadout');
   $('#graphHint').textContent = `Tracing ${taskId}...`;
+
+  // Close the loop with the What-If panel: clicking a task in the graph
+  // pre-selects it there too, so the person can go straight from "trace
+  // this cascade" to "now simulate protecting it."
+  const wiTaskSel = $('#wiTask');
+  if(wiTaskSel && Array.from(wiTaskSel.options).some(o => o.value === taskId)){
+    wiTaskSel.value = taskId;
+    setWhatIfMode(taskId);
+  }
+
   try{
     const res = await api(`/tasks/${taskId}/impact`);
     const downstreamIds = new Set(res.downstream.map(d => d.task_id));
@@ -1018,7 +1078,6 @@ $('#clearGraphBtn').addEventListener('click', () => {
 
 refreshWeightLabels();
 boot();
-loadDependencyGraph();
 </script>
 </body>
 </html>
