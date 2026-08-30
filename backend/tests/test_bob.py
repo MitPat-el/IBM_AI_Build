@@ -678,3 +678,166 @@ def test_build_brief_prompt_reassignment_forbidden_phrases_called_out():
     assert "swapping the receiver" in prompt   # cited as forbidden
     assert "exchanging astronauts" in prompt   # cited as forbidden
     assert "the receiver takes over" in prompt  # cited as forbidden
+
+
+# ---------------------------------------------------------------------------
+# New fields: receiver_drift_score, receiver_risk_level, workload_projected_ratio
+# ---------------------------------------------------------------------------
+
+def _base_ctx_with_receiver(**overrides) -> BriefContext:
+    """Base context that includes a What-If + feasibility + all three receiver fields."""
+    defaults = dict(
+        astronaut_name="Chen",
+        astronaut_id="A1",
+        day=4,
+        drift_score=0.72,
+        risk_level="high",
+        sub_scores={
+            "reaction_time": 0.60,
+            "sleep_debt": 0.55,
+            "circadian": 0.30,
+            "workload": 0.20,
+        },
+        whatif_comparison=[
+            {
+                "day": 4,
+                "original_drift": 0.72,
+                "whatif_drift": 0.50,
+                "delta": -0.22,
+                "original_risk_level": "high",
+                "whatif_risk_level": "elevated",
+            }
+        ],
+        reassigned_to="A2",
+        feasibility_status="feasible_with_caution",
+        feasibility_reasons=[],
+        feasibility_warnings=["Receiver has a dependency-critical task on day 4."],
+        receiver_drift_score=0.42,
+        receiver_risk_level="elevated",
+        workload_projected_ratio=1.43,
+    )
+    defaults.update(overrides)
+    return BriefContext(**defaults)
+
+
+# --- BriefContext accepts and stores the three new fields ---
+
+def test_brief_context_stores_receiver_drift_score():
+    ctx = _base_ctx_with_receiver()
+    assert ctx.receiver_drift_score == 0.42
+
+
+def test_brief_context_stores_receiver_risk_level():
+    ctx = _base_ctx_with_receiver()
+    assert ctx.receiver_risk_level == "elevated"
+
+
+def test_brief_context_stores_workload_projected_ratio():
+    ctx = _base_ctx_with_receiver()
+    assert ctx.workload_projected_ratio == 1.43
+
+
+def test_brief_context_receiver_fields_default_to_none():
+    ctx = _base_ctx()  # uses the existing helper with no receiver fields
+    assert ctx.receiver_drift_score is None
+    assert ctx.receiver_risk_level is None
+    assert ctx.workload_projected_ratio is None
+
+
+# --- _build_brief_prompt includes the receiver block when fields are supplied ---
+
+def test_build_brief_prompt_includes_receiver_block_when_supplied():
+    ctx = _base_ctx_with_receiver()
+    prompt = _build_brief_prompt(ctx)
+    assert "Receiver fatigue state on reassignment day" in prompt
+    assert "0.42" in prompt
+    assert "elevated" in prompt
+    assert "1.43" in prompt
+
+
+def test_build_brief_prompt_receiver_block_labelled_as_deterministic_fact():
+    ctx = _base_ctx_with_receiver()
+    prompt = _build_brief_prompt(ctx)
+    # The receiver block must be inside a [FACT — computed by deterministic model] section
+    assert "[FACT — computed by deterministic model]" in prompt
+    # Verify receiver values appear after that label (simple containment is sufficient)
+    fact_idx = prompt.rfind("[FACT — computed by deterministic model]")
+    receiver_idx = prompt.find("Receiver fatigue state on reassignment day")
+    assert receiver_idx > fact_idx
+
+
+def test_build_brief_prompt_receiver_block_instructs_no_recalculation():
+    ctx = _base_ctx_with_receiver()
+    prompt = _build_brief_prompt(ctx)
+    assert "Do NOT use them to recalculate or override" in prompt
+
+
+def test_build_brief_prompt_receiver_block_absent_when_fields_none():
+    """When receiver fields are None, prompt must say NOT SUPPLIED not silently omit."""
+    ctx = _base_ctx()  # no receiver fields
+    prompt = _build_brief_prompt(ctx)
+    assert "NOT SUPPLIED" in prompt
+    assert "Receiver fatigue state on reassignment day" not in prompt
+
+
+def test_build_brief_prompt_receiver_partial_fields_none_shows_not_supplied():
+    """If only some receiver fields are present (e.g. drift but no ratio), treat as absent."""
+    ctx = _base_ctx(receiver_drift_score=0.42, receiver_risk_level="elevated")
+    # workload_projected_ratio is None → block should be NOT SUPPLIED
+    prompt = _build_brief_prompt(ctx)
+    assert "Receiver fatigue state on reassignment day" not in prompt
+    assert "NOT SUPPLIED" in prompt
+
+
+def test_build_brief_prompt_contains_tradeoff_instruction():
+    """The prompt must instruct Granite on the ordered tradeoff explanation."""
+    prompt = _build_brief_prompt(_base_ctx())
+    assert "benefit to source astronaut" in prompt
+    assert "receiver's current fatigue state" in prompt
+    assert "receiver's projected workload ratio" in prompt
+
+
+# --- _fallback_brief uses receiver fields in intervention_assessment ---
+
+def test_fallback_brief_intervention_assessment_includes_receiver_tradeoff():
+    ctx = _base_ctx_with_receiver()
+    result = _fallback_brief(ctx)
+    assert "0.42" in result.intervention_assessment
+    assert "elevated" in result.intervention_assessment
+    assert "1.43" in result.intervention_assessment
+
+
+def test_fallback_brief_intervention_assessment_receiver_tradeoff_labelled_as_fact():
+    ctx = _base_ctx_with_receiver()
+    result = _fallback_brief(ctx)
+    # The receiver tradeoff sentence must be prefixed with FACT:
+    assert "FACT: Receiver fatigue state" in result.intervention_assessment
+
+
+def test_fallback_brief_intervention_assessment_no_receiver_when_fields_none():
+    """Without receiver fields the fallback must NOT mention receiver drift or ratio."""
+    ctx = _base_ctx(
+        whatif_comparison=[
+            {"day": 4, "original_drift": 0.72, "whatif_drift": 0.55,
+             "delta": -0.17, "original_risk_level": "high", "whatif_risk_level": "elevated"}
+        ],
+        reassigned_to="A2",
+        feasibility_status="feasible",
+    )
+    result = _fallback_brief(ctx)
+    # receiver-specific numbers must not appear
+    assert "Receiver fatigue state" not in result.intervention_assessment
+
+
+def test_fallback_brief_intervention_includes_source_delta_and_receiver_tradeoff_together():
+    """Both the source drift reduction and receiver state must appear in the same assessment."""
+    ctx = _base_ctx_with_receiver()
+    result = _fallback_brief(ctx)
+    ia = result.intervention_assessment
+    # Source benefit
+    assert "0.72" in ia   # original drift
+    assert "0.5" in ia    # what-if drift (Python renders 0.50 as 0.5)
+    assert "-0.2200" in ia or "-0.22" in ia  # delta
+    # Receiver tradeoff
+    assert "0.42" in ia
+    assert "1.43" in ia

@@ -507,6 +507,9 @@ def mission_brief(req: BriefRequest, db: Session = Depends(get_db)):
     feasibility_status = None
     feasibility_reasons = None
     feasibility_warnings = None
+    receiver_drift_score = None
+    receiver_risk_level = None
+    workload_projected_ratio = None
 
     if req.whatif_task_id or (req.whatif_reassign_to is not None and req.whatif_task_load_delta is not None):
         # Derive astronaut/day/load from task_id if given, else use req fields
@@ -560,6 +563,14 @@ def mission_brief(req: BriefRequest, db: Session = Depends(get_db)):
                 feasibility_status = fr.status
                 feasibility_reasons = fr.reasons
                 feasibility_warnings = fr.warnings
+                # Extract the raw check numbers so Granite can explain the tradeoff.
+                # These are already-computed facts inside FeasibilityResult.checks —
+                # no new calculations, just promoting them into BriefContext.
+                _fc_fatigue = fr.checks.get("fatigue")
+                _fc_workload = fr.checks.get("workload")
+                receiver_drift_score = getattr(_fc_fatigue, "drift_score", None)
+                receiver_risk_level = getattr(_fc_fatigue, "risk_level", None)
+                workload_projected_ratio = getattr(_fc_workload, "projected_ratio", None)
 
     # --- 4. Optional: dependency impact for a specific task ---
     impacted_task_name = None
@@ -593,6 +604,9 @@ def mission_brief(req: BriefRequest, db: Session = Depends(get_db)):
         feasibility_status=feasibility_status,
         feasibility_reasons=feasibility_reasons,
         feasibility_warnings=feasibility_warnings,
+        receiver_drift_score=receiver_drift_score,
+        receiver_risk_level=receiver_risk_level,
+        workload_projected_ratio=workload_projected_ratio,
         impacted_task_name=impacted_task_name,
         impacted_task_id=impacted_task_id,
         downstream_count=downstream_count,

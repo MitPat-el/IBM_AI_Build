@@ -232,6 +232,15 @@ class BriefContext:
     feasibility_reasons: Optional[list[str]] = None  # hard-failure reasons
     feasibility_warnings: Optional[list[str]] = None # soft advisory warnings
 
+    # Receiver state at reassignment day [FACT — feasibility.py, optional]
+    # Populated only when a feasibility check was run (whatif_reassign_to is set).
+    # These are the raw numbers behind the feasibility verdict — Granite must
+    # cite them as facts and must NOT use them to recalculate or override the
+    # feasibility_status already provided above.
+    receiver_drift_score: Optional[float] = None     # feasibility.FatigueFeasibility.drift_score
+    receiver_risk_level: Optional[str] = None        # feasibility.FatigueFeasibility.risk_level
+    workload_projected_ratio: Optional[float] = None # feasibility.WorkloadFeasibility.projected_ratio
+
     # Dependency impact [FACT — dependency_graph.py, optional]
     impacted_task_name: Optional[str] = None
     impacted_task_id: Optional[str] = None
@@ -400,6 +409,25 @@ def _build_brief_prompt(ctx: BriefContext) -> str:
     else:
         feasibility_block = "Reassignment feasibility: NOT SUPPLIED — do not infer."
 
+    # --- Receiver state block (optional — only present when feasibility was run) ---
+    if (ctx.receiver_drift_score is not None
+            and ctx.receiver_risk_level is not None
+            and ctx.workload_projected_ratio is not None):
+        receiver_block = (
+            f"[FACT — computed by deterministic model]\n"
+            f"Receiver fatigue state on reassignment day:\n"
+            f"  Receiver drift score: {ctx.receiver_drift_score}\n"
+            f"  Receiver risk level: {ctx.receiver_risk_level}\n"
+            f"  Receiver projected workload ratio (post-reassignment): "
+            f"{ctx.workload_projected_ratio}× rolling average\n"
+            f"NOTE: These values are the raw inputs behind the feasibility verdict above. "
+            f"Do NOT use them to recalculate or override that verdict. "
+            f"Use them only to explain the tradeoff: what the source astronaut gains "
+            f"vs. what fatigue/workload pressure the receiver would carry."
+        )
+    else:
+        receiver_block = "Receiver fatigue/workload state: NOT SUPPLIED — do not infer."
+
     # --- Dependency impact section (optional) ---
     if ctx.impacted_task_name is not None and ctx.downstream_count is not None:
         if ctx.downstream_tasks:
@@ -463,6 +491,8 @@ Sub-scores:
 
 {feasibility_block}
 
+{receiver_block}
+
 {dep_block}
 
 TASK
@@ -506,6 +536,11 @@ Additional requirements:
 - If dependency impact is supplied, cite the downstream task count and names.
 - If feasibility data is supplied, state the exact status word (FEASIBLE / FEASIBLE_WITH_CAUTION /
   NOT_FEASIBLE) and cite any reasons/warnings verbatim. Do not soften or reinterpret it.
+- If receiver fatigue/workload state is supplied, use it to explain the reassignment tradeoff
+  in this exact order: (1) benefit to source astronaut (drift reduction from What-If delta),
+  (2) receiver's current fatigue state (drift score and risk level as supplied),
+  (3) receiver's projected workload ratio (as supplied), (4) any later-day mission consequences
+  visible from the downstream task list. Do NOT recalculate any of these values.
 - Identify tradeoffs where a proposed intervention reduces one risk but may introduce another
   (based only on supplied data — do not speculate about conditions not in this context).
 - Recommended actions must be non-medical and operational only.
@@ -616,6 +651,15 @@ def _fallback_brief(ctx: BriefContext,
                 f"({r['original_risk_level']}) to {r['whatif_drift']} "
                 f"({r['whatif_risk_level']}), a delta of {r['delta']:+.4f}. "
             )
+            # Receiver tradeoff: state the other side of the coin
+            if (ctx.receiver_drift_score is not None
+                    and ctx.receiver_risk_level is not None
+                    and ctx.workload_projected_ratio is not None):
+                intervention_assessment += (
+                    f"FACT: Receiver fatigue state on reassignment day — "
+                    f"drift score {ctx.receiver_drift_score} ({ctx.receiver_risk_level} risk), "
+                    f"projected workload ratio {ctx.workload_projected_ratio}× rolling average. "
+                )
             if ctx.feasibility_status:
                 intervention_assessment += (
                     f"FACT: Deterministic feasibility check result: {ctx.feasibility_status}."
