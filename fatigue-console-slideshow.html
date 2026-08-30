@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fatigue Console — Demo Slideshow</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  /* To run slideshow: Right click on this file and press open with integrated browser or copy the file name and paste in your browser*/
+
+  :root {
+    --bg: #06080f;
+    --surface: #0d1117;
+    --panel: #111827;
+    --border: #1e2d40;
+    --accent: #38bdf8;
+    --accent2: #818cf8;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --ok: #22c55e;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --fade: #94a3b8;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px 48px;
+  }
+
+  .deck { width: 100%; max-width: 1100px; }
+
+  /* ── Slide ── */
+  .slide { display: none; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; min-height: 490px; flex-direction: column; }
+  .slide.active { display: flex; }
+
+  /* ── iframe slide ── */
+  .slide-iframe { flex: 1; border: none; width: 100%; min-height: 700px; display: block; }
+
+  /* ── Header bar ── */
+  .slide-header { display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 22px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  .slide-label { font-size: 11px; font-weight: 600; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted); }
+  .slide-title-bar { font-size: 12px; font-weight: 700; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--accent); }
+  .slide-time { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  /* ── Body ── */
+  .slide-body { flex: 1; padding: 28px 30px 24px; display: flex; flex-direction: column; gap: 18px; }
+
+  /* ── Hero ── */
+  .hero { text-align: center; padding: 24px 16px 8px; }
+  .hero-eyebrow { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+  .hero-title { font-size: 40px; font-weight: 800; letter-spacing: -.02em; color: var(--accent); line-height: 1.1; }
+  .hero-sub { font-size: 14px; color: var(--fade); margin-top: 8px; letter-spacing: .06em; }
+  .hero-tagline { margin: 20px auto 0; font-size: 15.5px; color: var(--text); font-style: italic;
+    max-width: 560px; line-height: 1.75; }
+
+  /* ── Section heading ── */
+  .sec-heading { font-size: 10.5px; letter-spacing: .15em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; }
+
+  /* ── Quote ── */
+  .quote-block { background: var(--panel); border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0; padding: 13px 17px; font-size: 14px; color: var(--text); line-height: 1.75; }
+  .quote-block.warn { border-left-color: var(--warn); }
+  .quote-block.ok   { border-left-color: var(--ok); }
+
+  /* ── Two-col ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  /* ── Card ── */
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 15px 17px; }
+  .card-title { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+
+  /* ── Metrics ── */
+  .metric-row { display: flex; align-items: baseline; gap: 8px; }
+  .metric-val { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+  .metric-val.accent { color: var(--accent); }
+  .metric-val.warn   { color: var(--warn); }
+  .metric-val.danger { color: var(--danger); }
+  .metric-val.ok     { color: var(--ok); }
+
+  /* ── Signal bars ── */
+  .signal-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+  .signal-item { display: flex; flex-direction: column; gap: 3px; }
+  .signal-row { display: flex; justify-content: space-between; }
+  .signal-name { font-size: 12px; color: var(--fade); }
+  .signal-pct  { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .bar-track { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; background: var(--accent); }
+  .bar-fill.warn   { background: var(--warn); }
+  .bar-fill.danger { background: var(--danger); }
+
+  /* ── Badge ── */
+  .badge { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .09em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 4px; }
+  .badge.elevated { background: rgba(245,158,11,.14); color: var(--warn);   border: 1px solid rgba(245,158,11,.28); }
+  .badge.nominal  { background: rgba(34,197,94,.11);  color: var(--ok);     border: 1px solid rgba(34,197,94,.28); }
+  .badge.info     { background: rgba(56,189,248,.09); color: var(--accent); border: 1px solid rgba(56,189,248,.28); }
+  .badge.purple   { background: rgba(129,140,248,.1); color: var(--accent2);border: 1px solid rgba(129,140,248,.28);}
+
+  /* ── Compare ── */
+  .compare-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .compare-box { flex:1; min-width:120px; background:var(--panel); border:1px solid var(--border);
+    border-radius:8px; padding:13px 15px; text-align:center; }
+  .compare-box .score { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .compare-box .score.warn   { color:var(--warn); }
+  .compare-box .score.ok     { color:var(--ok); }
+  .compare-box .lbl { font-size:11px; color:var(--muted); margin-top:4px; }
+  .arrow-sym { font-size:20px; color:var(--muted); }
+
+  /* ── Banner ── */
+  .banner { background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.24);
+    border-radius:8px; padding:11px 15px; font-size:13px; color:#fca5a5;
+    display:flex; align-items:flex-start; gap:9px; }
+  .banner-icon { font-size:15px; flex-shrink:0; margin-top:1px; }
+  .banner.ok-banner { background:rgba(34,197,94,.07); border-color:rgba(34,197,94,.2); color:#86efac; }
+
+  /* ── AI Brief ── */
+  .brief-section { background:var(--panel); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .brief-row { display:flex; gap:12px; padding:10px 15px; border-bottom:1px solid var(--border);
+    font-size:12.5px; line-height:1.55; align-items:flex-start; }
+  .brief-row:last-child { border-bottom:none; }
+  .brief-tag { flex-shrink:0; width:148px; font-size:9.5px; font-weight:700; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--accent2); padding-top:2px; }
+  .brief-text { color:var(--fade); flex:1; }
+
+  /* ── Pipeline ── */
+  .pipeline { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+  .pipe-step { background:var(--panel); border:1px solid var(--border); border-radius:6px;
+    padding:5px 11px; font-size:11px; font-weight:600; color:var(--fade); }
+  .pipe-step.granite { border-color:rgba(129,140,248,.4); color:var(--accent2); background:rgba(129,140,248,.07); }
+  .pipe-arrow { color:var(--muted); font-size:13px; }
+
+  /* ── Principle cards ── */
+  .principle-card { background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    padding:14px 15px; }
+  .principle-icon  { font-size:20px; margin-bottom:6px; }
+  .principle-title { font-size:12px; font-weight:700; color:var(--text); margin-bottom:3px; }
+  .principle-desc  { font-size:11.5px; color:var(--muted); line-height:1.55; }
+
+  /* ── Util ── */
+  hr.sep { border:none; border-top:1px solid var(--border); margin: 2px 0; }
+  .mt4  { margin-top:4px; }
+  .mt8  { margin-top:8px; }
+  .mt12 { margin-top:12px; }
+  .flex-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .small { font-size:12px; color:var(--muted); }
+  strong { color:var(--text); font-weight:700; }
+
+  /* ── Navigation ── */
+  .nav { margin-top:18px; display:flex; align-items:center; justify-content:center; gap:14px; }
+  .nav-btn { background:var(--panel); border:1px solid var(--border); border-radius:7px;
+    color:var(--fade); padding:8px 20px; font-size:13px; font-weight:600; cursor:pointer;
+    transition:border-color .15s, color .15s; }
+  .nav-btn:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+  .nav-btn:disabled { opacity:.3; cursor:default; }
+  .slide-counter { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums;
+    min-width:44px; text-align:center; }
+  .dot-nav { display:flex; gap:8px; justify-content:center; margin-top:12px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--border); cursor:pointer; transition:background .15s; }
+  .dot.active { background:var(--accent); }
+
+  /* ── Footer ── */
+  .made-with { margin-top:30px; font-size:12px; color:var(--muted); text-align:center;
+    padding-top:10px; border-top:1px solid var(--border); width:100%; max-width:840px; }
+</style>
+</head>
+<body>
+
+<div class="deck">
+
+  <!-- ═══════════════════ SLIDE 1 — Hook & Problem ═══════════════════ -->
+  <div class="slide active" id="slide-1">
+    <div class="slide-header">
+      <span class="slide-label">Person 1 · Hook &amp; Problem</span>
+      <span class="slide-title-bar">FATIGUE CONSOLE // CREW DRIFT MONITOR</span>
+      <span class="slide-time">0:00 – 0:30</span>
+    </div>
+    <div class="slide-body">
+
+      <div class="hero">
+        <div class="hero-eyebrow">IBM AI Build · Demo Presentation</div>
+        <div class="hero-title">FATIGUE CONSOLE</div>
+        <div class="hero-sub">CREW DRIFT MONITOR</div>
+        <div class="hero-tagline">
+          "A decline in attention or performance during a critical operation can become a mission-level risk."
+        </div>
+      </div>
+
+      <hr class="sep" />
+
+      <div class="sec-heading">The Problem</div>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">Known Risk Factors — NASA Human Performance Research</div>
+          <div class="signal-list">
+            <div class="signal-item">
+              <div class="signal-row"><span class="signal-name">Sleep Loss</span><span class="signal-pct" style="color:var(--danger)">High impact</span></div>
+              <div class="bar-track"><div class="bar-fill danger" style="width:88%"></div></div>
+            </div>
+            <div class="signal-item">
+              <div class="signal-row"><span class="signal-name">Circadian Disruption</span><span class="signal-pct" style="color:var(--warn)">High impact</span></div>
+              <div class="bar-track"><div class="bar-fill warn" style="width:76%"></div></div>
+            </div>
+            <div class="signal-item">
+              <div class="signal-row"><span class="signal-name">Workload</span><span class="signal-pct" style="color:var(--warn)">Moderate</span></div>
+              <div class="bar-track"><div class="bar-fill warn" style="width:62%"></div></div>
+            </div>
+            <div class="signal-item">
+              <div class="signal-row"><span class="signal-name">Vigilant Attention (PVT)</span><span class="signal-pct" style="color:var(--accent)">Measurable</span></div>
+              <div class="bar-track"><div class="bar-fill" style="width:54%"></div></div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div class="card">
+            <div class="card-title">The Hard Question</div>
+            <div class="quote-block warn mt4">
+              If we intervene by moving a critical task to another astronaut — are we <strong>reducing risk</strong>, or simply <strong>moving it somewhere else</strong>?
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Why This Matters</div>
+            <div class="small" style="color:var(--fade);line-height:1.7;font-size:13px;">
+              Identifying fatigue is only <strong>half the problem</strong>. Interventions can displace risk across the crew and across time — creating new hazards downstream. That is the problem Fatigue Console is built to explore.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex-row">
+        <span class="badge info">MISSION DECISION SUPPORT</span>
+        <span class="badge elevated">HUMAN PERFORMANCE RISK</span>
+        <span class="badge info">NASA RESEARCH</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════ SLIDE 2 — Our Solution ═══════════════════ -->
+  <div class="slide" id="slide-2">
+    <div class="slide-header">
+      <span class="slide-label">Person 2 · Our Solution</span>
+      <span class="slide-title-bar">FATIGUE CONSOLE // CREW DRIFT MONITOR</span>
+      <span class="slide-time">0:30 – 0:58</span>
+    </div>
+    <div class="slide-body">
+
+      <div class="sec-heading">The System</div>
+      <div class="quote-block">
+        An AI-assisted mission <strong>decision-support system</strong> that connects crew fatigue signals with mission operations — projecting risk, linking it to tasks, and enabling simulation before action.
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">Fatigue Drift Score — Chen · Mission Day 3</div>
+          <div class="metric-row mt4">
+            <span class="metric-val warn">0.3598</span>
+            <span class="badge elevated" style="margin-left:6px;">ELEVATED</span>
+          </div>
+          <div class="signal-list mt8">
+            <div class="signal-item">
+              <div class="signal-row"><span class="signal-name">PVT Performance</span><span class="signal-pct" style="color:var(--warn)">72%</span></div>
+              <div class="bar-track"><div class="bar-fill warn" style="width:72%"></div></div>
+            </div>
+            <div class="signal-item">
+              <div class="signal-row"><span class="signal-name">Sleep Debt</span><span class="signal-pct" style="color:var(--warn)">68%</span></div>
+              <div class="bar-track"><div class="bar-fill warn" style="width:68%"></div></div>
+            </div>
+            <div class="signal-item">
+              <div class="signal-row"><span class="signal-name">Circadian Shift</span><span class="signal-pct" style="color:var(--accent)">41%</span></div>
+              <div class="bar-track"><div class="bar-fill" style="width:41%"></div></div>
+            </div>
+            <div class="signal-item">
+              <div class="signal-row"><span class="signal-name">Workload Index</span><span class="signal-pct" style="color:var(--warn)">58%</span></div>
+              <div class="bar-track"><div class="bar-fill warn" style="width:58%"></div></div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div class="card">
+            <div class="card-title">Four Combined Signals</div>
+            <div class="small" style="font-size:13px;color:var(--fade);line-height:1.65;">
+              PVT performance · Sleep debt · Circadian shift · Workload — combined into a single <strong>interpretable Fatigue Drift Score</strong>.
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Mission Dependency Graph</div>
+            <div class="small" style="font-size:13px;color:var(--fade);line-height:1.65;">
+              Tasks are linked. Risk connects to <strong>scheduled operations and their dependencies</strong>, so cascading effects are visible before any change is made.
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">What the System Enables</div>
+            <div class="small" style="color:var(--fade);line-height:1.75;">
+              → Projects risk across the full mission timeline<br/>
+              → Links fatigue to specific task schedule entries<br/>
+              → Simulates an intervention <em>before</em> acting
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════ SLIDE 3 — The What-If Moment ═══════════════════ -->
+  <div class="slide" id="slide-3">
+    <div class="slide-header">
+      <span class="slide-label">Person 3 · The What-If Moment</span>
+      <span class="slide-title-bar">FATIGUE CONSOLE // CREW DRIFT MONITOR</span>
+      <span class="slide-time">0:58 – 1:35</span>
+    </div>
+    <div class="slide-body">
+
+      <div class="sec-heading">Live Simulation — Mission Day 3</div>
+      <div class="quote-block warn">
+        <strong>Task T7:</strong> EVA — External Repair &nbsp;·&nbsp; Assigned: Chen (A1) &nbsp;·&nbsp; Proposed reassignment → Ivanova (A3)
+      </div>
+
+      <div class="two-col">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <div class="card-title">Simulate Intervention — Chen → Ivanova</div>
+            <div class="compare-row mt8">
+              <div class="compare-box">
+                <div class="score warn">0.3598</div>
+                <div class="lbl"><span class="badge elevated">ELEVATED</span></div>
+                <div class="lbl" style="margin-top:6px;">Chen · Before</div>
+              </div>
+              <div class="arrow-sym">→</div>
+              <div class="compare-box">
+                <div class="score ok">0.3019</div>
+                <div class="lbl"><span class="badge nominal">NOMINAL</span></div>
+                <div class="lbl" style="margin-top:6px;">Chen · After</div>
+              </div>
+            </div>
+          </div>
+          <div class="banner">
+            <div class="banner-icon">⚠</div>
+            <div>
+              <strong>NOT FEASIBLE</strong><br/>
+              Reassignment pushes Ivanova's projected workload to <strong>5.26×</strong> her rolling average. Fatigue risk increases later in the mission.
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div class="card">
+            <div class="card-title">Ivanova (A3) — Projected Workload Impact</div>
+            <div class="metric-row mt4">
+              <span class="metric-val danger">5.26×</span>
+            </div>
+            <div class="small mt4">Projected workload vs. rolling average</div>
+            <div class="bar-track mt8" style="height:8px;">
+              <div class="bar-fill danger" style="width:96%"></div>
+            </div>
+            <div class="small mt4" style="color:var(--danger);">Far exceeds safe threshold</div>
+          </div>
+          <div class="card">
+            <div class="card-title">Full Mission Trajectory</div>
+            <div class="small" style="font-size:13px;color:var(--fade);line-height:1.65;">
+              While Chen's score improves <em>immediately</em>, the full trajectory shows <strong>fatigue risk increases later</strong> in the mission. The risk is not removed — it is displaced.
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Key Insight</div>
+            <div class="small" style="font-size:13px;color:var(--fade);line-height:1.65;">
+              Fatigue Console doesn't stop at the immediate improvement. The <strong>feasibility model</strong> evaluates the full downstream consequence before surfacing a result.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════ SLIDE 4 — IBM Granite + AI ═══════════════════ -->
+  <div class="slide" id="slide-4">
+    <div class="slide-header">
+      <span class="slide-label">Person 4 · IBM Granite + AI</span>
+      <span class="slide-title-bar">FATIGUE CONSOLE // CREW DRIFT MONITOR</span>
+      <span class="slide-time">1:35 – 2:08</span>
+    </div>
+    <div class="slide-body">
+
+      <div class="sec-heading">Architecture</div>
+      <div class="pipeline">
+        <span class="pipe-step">PVT · Sleep · Circadian · Workload</span>
+        <span class="pipe-arrow">→</span>
+        <span class="pipe-step">Fatigue Drift Score</span>
+        <span class="pipe-arrow">→</span>
+        <span class="pipe-step">Feasibility Model</span>
+        <span class="pipe-arrow">→</span>
+        <span class="pipe-step granite">IBM GRANITE · LOCAL</span>
+        <span class="pipe-arrow">→</span>
+        <span class="pipe-step">Mission Decision Brief</span>
+      </div>
+
+      <div class="two-col mt4">
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div class="card">
+            <div class="card-title">What Granite Does NOT Do</div>
+            <div class="small" style="color:var(--muted);line-height:1.75;font-size:13px;">
+              ✗ &nbsp;Calculate risk scores<br/>
+              ✗ &nbsp;Change fatigue values<br/>
+              ✗ &nbsp;Make operational decisions<br/>
+              ✗ &nbsp;Override deterministic outputs
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">What Granite Does</div>
+            <div class="small" style="color:var(--fade);line-height:1.75;font-size:13px;">
+              ✓ &nbsp;Receives <strong>verified, deterministic outputs</strong><br/>
+              ✓ &nbsp;Turns interconnected evidence into <strong>structured explanation</strong><br/>
+              ✓ &nbsp;Produces the Mission Decision Brief
+            </div>
+          </div>
+          <div class="quote-block">
+            Deterministic calculations stay <strong>deterministic</strong>. Granite handles what generative AI does best: turning data into <strong>understandable decision support</strong>.
+          </div>
+        </div>
+        <div>
+          <div class="card-title" style="margin-bottom:6px;">IBM GRANITE · Mission Decision Brief</div>
+          <div class="brief-section">
+            <div class="brief-row">
+              <div class="brief-tag">Primary Drivers</div>
+              <div class="brief-text">Chen: elevated PVT decline + sleep debt during T7 EVA window on Mission Day 3.</div>
+            </div>
+            <div class="brief-row">
+              <div class="brief-tag">Mission Implications</div>
+              <div class="brief-text">T7 has 5 downstream dependent tasks — disruption cascades across the schedule.</div>
+            </div>
+            <div class="brief-row">
+              <div class="brief-tag">Intervention Assessment</div>
+              <div class="brief-text">Reassignment improves Chen (0.3598→0.3019 Nominal) but loads Ivanova at 5.26× average.</div>
+            </div>
+            <div class="brief-row">
+              <div class="brief-tag">Recommended Actions</div>
+              <div class="brief-text">Consider delaying T7 or reducing pre-EVA workload across both crew members.</div>
+            </div>
+            <div class="brief-row">
+              <div class="brief-tag">Uncertainties</div>
+              <div class="brief-text">Sleep recovery rate and Ivanova's short-term adaptation capacity remain uncertain.</div>
+            </div>
+            <div class="brief-row">
+              <div class="brief-tag">Human Review Required</div>
+              <div class="brief-text">Mission Control must authorise any schedule change. Final operational call: human.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════ SLIDE 5 — IBM Bob + Impact + Closing ═══════════════════ -->
+  <div class="slide" id="slide-5">
+    <div class="slide-header">
+      <span class="slide-label">Person 5 · IBM Bob + Impact + Closing</span>
+      <span class="slide-title-bar">FATIGUE CONSOLE // CREW DRIFT MONITOR</span>
+      <span class="slide-time">2:08 – 2:50</span>
+    </div>
+    <div class="slide-body">
+
+      <div class="two-col">
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <div class="sec-heading">Built With IBM Bob</div>
+            <div class="card mt4">
+              <div class="card-title">Development Areas</div>
+              <div class="small" style="color:var(--muted);line-height:1.85;font-size:13px;">
+                → Backend architecture &amp; APIs<br/>
+                → Simulation &amp; feasibility logic<br/>
+                → IBM Granite integration<br/>
+                → Automated testing<br/>
+                → Frontend integration
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="sec-heading">Human-Centered Design</div>
+            <div class="banner ok-banner mt4">
+              <div class="banner-icon">✓</div>
+              <div>
+                The system calculates the facts.<br/>
+                <strong>Granite</strong> explains the tradeoffs.<br/>
+                <strong>Humans</strong> make the decision.
+              </div>
+            </div>
+            <div class="small mt8">
+              Fatigue Console does <strong>not</strong> diagnose astronauts, automatically reassign tasks, or make operational decisions.
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div class="principle-card">
+            <div class="principle-icon">🧮</div>
+            <div class="principle-title">Calculate</div>
+            <div class="principle-desc">Deterministic fatigue scores and feasibility outputs grounded in verified data. No black boxes.</div>
+          </div>
+          <div class="principle-card">
+            <div class="principle-icon">💬</div>
+            <div class="principle-title">Explain</div>
+            <div class="principle-desc">IBM Granite translates interconnected evidence into a structured, readable Mission Decision Brief.</div>
+          </div>
+          <div class="principle-card">
+            <div class="principle-icon">👩‍🚀</div>
+            <div class="principle-title">Decide</div>
+            <div class="principle-desc">Mission Control reviews all tradeoffs and retains full operational authority. AI advises. Humans decide.</div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="sep" />
+
+      <div style="text-align:center;padding:12px 0 4px;">
+        <div style="font-size:30px;font-weight:800;letter-spacing:-.01em;color:var(--accent);">FATIGUE CONSOLE</div>
+        <div style="font-size:14px;color:var(--fade);margin-top:6px;font-style:italic;">
+          From fatigue signals to mission-aware, actionable insight.
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+          <span class="badge info">IBM GRANITE · LOCAL</span>
+          <span class="badge purple">IBM BOB</span>
+          <span class="badge nominal">HUMAN-IN-THE-LOOP</span>
+          <span class="badge info">MISSION DECISION SUPPORT</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════ SLIDE 6 — Live Dashboard ═══════════════════ -->
+  <div class="slide" id="slide-6">
+    <div class="slide-header">
+      <span class="slide-label">Live Demo</span>
+      <span class="slide-title-bar">FATIGUE CONSOLE // CREW DRIFT MONITOR</span>
+      <span class="slide-time">Interactive</span>
+    </div>
+    <iframe class="slide-iframe" src="frontend/index.html" title="Fatigue Console Live Dashboard"></iframe>
+  </div>
+
+</div><!-- /deck -->
+
+<!-- Navigation -->
+<div class="nav">
+  <button class="nav-btn" id="btn-prev" onclick="changeSlide(-1)" disabled>← Prev</button>
+  <span class="slide-counter" id="counter">1 / 6</span>
+  <button class="nav-btn" id="btn-next" onclick="changeSlide(1)">Next →</button>
+</div>
+<div class="dot-nav" id="dot-nav">
+  <div class="dot active" onclick="goSlide(1)"></div>
+  <div class="dot" onclick="goSlide(2)"></div>
+  <div class="dot" onclick="goSlide(3)"></div>
+  <div class="dot" onclick="goSlide(4)"></div>
+  <div class="dot" onclick="goSlide(5)"></div>
+  <div class="dot" onclick="goSlide(6)"></div>
+</div>
+
+<div class="made-with">Made with IBM Bob</div>
+
+<script>
+  var current = 1;
+  var total = 6;
+
+  function showSlide(n) {
+    for (var i = 1; i <= total; i++) {
+      var el = document.getElementById('slide-' + i);
+      if (el) el.classList.toggle('active', i === n);
+    }
+    document.querySelectorAll('.dot').forEach(function(d, idx) {
+      d.classList.toggle('active', idx + 1 === n);
+    });
+    document.getElementById('counter').textContent = n + ' / ' + total;
+    document.getElementById('btn-prev').disabled = n === 1;
+    document.getElementById('btn-next').disabled = n === total;
+    current = n;
+  }
+
+  function changeSlide(dir) {
+    var next = current + dir;
+    if (next >= 1 && next <= total) showSlide(next);
+  }
+
+  function goSlide(n) { showSlide(n); }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') changeSlide(1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   changeSlide(-1);
+  });
+</script>
+</body>
+</html>
