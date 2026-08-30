@@ -9,9 +9,9 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0A0D10;
-    --panel:#11161B;
-    --panel-raised:#171D24;
+    --bg:#001141;
+    --panel:#041728;
+    --panel-raised:#012749;
     --hairline:#262E36;
     --hairline-bright:#3A4550;
     --text:#E8EDF1;
@@ -494,6 +494,22 @@
         </div>
       </section>
 
+    </div>
+
+    <!-- RIGHT: Astronaut detail + Formula Weight Calibration -->
+    <div style="display:flex; flex-direction:column; gap:18px;">
+      <section class="panel">
+        <div class="panel-head">
+          <span class="panel-title">Astronaut Detail</span>
+        </div>
+        <div class="panel-body" id="detailBody">
+          <div class="empty-state">
+            NO&nbsp;CHANNEL&nbsp;SELECTED<br>
+            &gt; click a cell in the crew risk matrix to open a telemetry channel
+          </div>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel-head">
           <span class="panel-title">Formula Weight Calibration</span>
@@ -524,22 +540,6 @@
           <div class="weights-actions">
             <button id="applyWeightsBtn">Apply &amp; Recompute</button>
             <button class="ghost" id="resetWeightsBtn">Reset Defaults</button>
-          </div>
-        </div>
-      </section>
-
-    </div>
-
-    <!-- RIGHT: Astronaut detail -->
-    <div>
-      <section class="panel">
-        <div class="panel-head">
-          <span class="panel-title">Astronaut Detail</span>
-        </div>
-        <div class="panel-body" id="detailBody">
-          <div class="empty-state">
-            NO&nbsp;CHANNEL&nbsp;SELECTED<br>
-            &gt; click a cell in the crew risk matrix to open a telemetry channel
           </div>
         </div>
       </section>
