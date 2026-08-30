@@ -834,10 +834,120 @@ def test_fallback_brief_intervention_includes_source_delta_and_receiver_tradeoff
     ctx = _base_ctx_with_receiver()
     result = _fallback_brief(ctx)
     ia = result.intervention_assessment
-    # Source benefit
+    # Source benefit — original and what-if drift values
     assert "0.72" in ia   # original drift
     assert "0.5" in ia    # what-if drift (Python renders 0.50 as 0.5)
-    assert "-0.2200" in ia or "-0.22" in ia  # delta
+    # Delta must appear as a positive magnitude, not as "reduction of -0.xxxx"
+    assert "reduction of 0.2200" in ia or "increase of 0.2200" in ia
+    assert "delta -0.2200" in ia   # signed delta still present in parenthetical
     # Receiver tradeoff
     assert "0.42" in ia
     assert "1.43" in ia
+
+
+# --- Fix 1: intervention_assessment must cite BOTH receiver drift+risk AND workload ratio ---
+
+def test_fallback_brief_intervention_cites_receiver_drift_and_risk_level():
+    ctx = _base_ctx_with_receiver()
+    result = _fallback_brief(ctx)
+    ia = result.intervention_assessment
+    assert "0.42" in ia               # receiver_drift_score
+    assert "elevated" in ia           # receiver_risk_level
+
+
+def test_fallback_brief_intervention_cites_workload_projected_ratio():
+    ctx = _base_ctx_with_receiver()
+    result = _fallback_brief(ctx)
+    ia = result.intervention_assessment
+    assert "1.43" in ia               # workload_projected_ratio
+
+
+# --- Fix 2: wording must use "prototype workload threshold", not "validated capacity" ---
+
+def test_feasibility_workload_reason_uses_prototype_workload_threshold_wording():
+    """The workload fail reason must say 'prototype workload threshold', not 'validated capacity limit'."""
+    from feasibility import check_workload
+    from simulator import MissionDayRecord
+    from drift import DriftResult
+
+    drift = DriftResult(
+        reaction_time_score=0.0, sleep_debt_score=0.0, circadian_score=0.0,
+        workload_score=0.0, drift_score=0.3, updated_sleep_debt_hours=0.0,
+        risk_level="nominal",
+    )
+    record = MissionDayRecord(
+        day=3, astronaut_id="A2", hours_slept=7.0, pvt_lapses=3,
+        minutes_phase_shift=0.0, task_load=8.0, rolling_avg_task_load=8.0, drift=drift,
+    )
+    result = check_workload(record, task_load_delta=-5.0)  # (8+5)/8 = 1.625 > 1.5 → fails
+    assert result.passed is False
+    assert "prototype workload threshold" in result.reason
+    assert "not an operationally validated capacity limit" in result.reason
+    # The old phrase must be gone
+    assert "not a validated capacity limit" not in result.reason
+
+
+def test_build_brief_prompt_intervention_assessment_instruction_forbids_negative_reduction():
+    """The JSON output instruction for intervention_assessment must forbid 'a reduction of -X'."""
+    prompt = _build_brief_prompt(_base_ctx())
+    assert "never 'a reduction of -X.XXXX'" in prompt or "never" in prompt and "reduction of -" in prompt
+
+
+def test_build_brief_prompt_intervention_assessment_requires_prototype_workload_label():
+    """The JSON output instruction must require labelling the workload ratio as a prototype threshold."""
+    prompt = _build_brief_prompt(_base_ctx())
+    assert "prototype workload threshold" in prompt
+
+
+def test_build_brief_prompt_receiver_tradeoff_requires_explicit_drift_and_ratio():
+    """The tradeoff instruction must explicitly require stating both drift score/risk AND workload ratio."""
+    prompt = _build_brief_prompt(_base_ctx())
+    assert "receiver drift score" in prompt or "drift score and risk level" in prompt
+    assert "projected workload ratio" in prompt
+
+
+# --- Fix 3: fallback delta rendering ---
+
+def test_fallback_brief_delta_not_rendered_as_reduction_of_negative():
+    """'a reduction of -X.XXXX' must never appear — magnitude only for the reduction word."""
+    ctx = _base_ctx(
+        whatif_comparison=[
+            {"day": 4, "original_drift": 0.72, "whatif_drift": 0.6621,
+             "delta": -0.0579, "original_risk_level": "high", "whatif_risk_level": "high"}
+        ],
+        reassigned_to="A2",
+    )
+    result = _fallback_brief(ctx)
+    ia = result.intervention_assessment
+    assert "reduction of -" not in ia    # the broken pattern must be absent
+    assert "increase of -" not in ia     # same check for increases (sign must never follow the word)
+    # The magnitude should appear positively
+    assert "0.0579" in ia
+
+
+def test_fallback_brief_delta_positive_change_says_increase():
+    """A positive delta (drift goes up) must say 'an increase of X.XXXX'."""
+    ctx = _base_ctx(
+        whatif_comparison=[
+            {"day": 4, "original_drift": 0.60, "whatif_drift": 0.65,
+             "delta": 0.05, "original_risk_level": "elevated", "whatif_risk_level": "elevated"}
+        ],
+    )
+    result = _fallback_brief(ctx)
+    ia = result.intervention_assessment
+    assert "increase of 0.0500" in ia
+    assert "delta +0.0500" in ia
+
+
+def test_fallback_brief_delta_negative_change_says_reduction():
+    """A negative delta (drift goes down) must say 'a reduction of X.XXXX' (no minus sign)."""
+    ctx = _base_ctx(
+        whatif_comparison=[
+            {"day": 4, "original_drift": 0.72, "whatif_drift": 0.55,
+             "delta": -0.17, "original_risk_level": "high", "whatif_risk_level": "elevated"}
+        ],
+    )
+    result = _fallback_brief(ctx)
+    ia = result.intervention_assessment
+    assert "reduction of 0.1700" in ia
+    assert "delta -0.1700" in ia

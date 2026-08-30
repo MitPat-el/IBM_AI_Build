@@ -538,9 +538,12 @@ Additional requirements:
   NOT_FEASIBLE) and cite any reasons/warnings verbatim. Do not soften or reinterpret it.
 - If receiver fatigue/workload state is supplied, use it to explain the reassignment tradeoff
   in this exact order: (1) benefit to source astronaut (drift reduction from What-If delta),
-  (2) receiver's current fatigue state (drift score and risk level as supplied),
-  (3) receiver's projected workload ratio (as supplied), (4) any later-day mission consequences
-  visible from the downstream task list. Do NOT recalculate any of these values.
+  (2) receiver's current fatigue state — you MUST state the receiver drift score and risk level
+  as supplied (e.g. "receiver drift score X.XX (RISK_LEVEL risk)"),
+  (3) receiver's projected workload ratio — you MUST state the ratio as supplied
+  (e.g. "projected workload ratio X.XX× rolling average (prototype workload threshold — not
+  operationally validated)"), (4) any later-day mission consequences visible from the downstream
+  task list. Do NOT recalculate any of these values.
 - Identify tradeoffs where a proposed intervention reduces one risk but may introduce another
   (based only on supplied data — do not speculate about conditions not in this context).
 - Recommended actions must be non-medical and operational only.
@@ -553,7 +556,7 @@ Respond ONLY in this exact JSON shape, no other text, no markdown fences:
   "executive_summary": "<sentences that SEPARATELY address each scope present: first sentence covers {ctx.astronaut_name}'s individual drift/risk on day {ctx.day}; if mission summary supplied, a second sentence covers mission-wide risk using 'Separately' or 'Mission-wide'; if What-If supplied, a third sentence introduces it as a simulation result — never blend individual drift into mission-level claims>",
   "primary_drivers": ["<sub-score name and value, referring to {ctx.astronaut_name}'s individual scores only>", "..."],
   "mission_implications": ["<one implication per item, citing task names or downstream counts where supplied>", "..."],
-  "intervention_assessment": "<if What-If data supplied: introduce as simulation, compare before/after drift by number, state feasibility status verbatim; if not supplied: state 'No What-If context supplied.'>",
+  "intervention_assessment": "<if What-If data supplied: introduce as simulation, compare before/after drift by number (use 'a reduction of X.XXXX' or 'an increase of X.XXXX' — never 'a reduction of -X.XXXX'); if receiver state supplied, explicitly state receiver drift score, risk level, AND projected workload ratio as supplied facts, noting it is a prototype workload threshold not an operationally validated limit; state feasibility status verbatim; if not supplied: state 'No What-If context supplied.'>",
   "recommended_actions": ["ACTION OPTION: <non-medical operational action>", "..."],
   "uncertainties": ["<prototype limitation or data gap>", "..."],
   "human_review_required": true
@@ -645,11 +648,14 @@ def _fallback_brief(ctx: BriefContext,
             receiver_clause = (
                 f"reassigning to {ctx.reassigned_to}" if ctx.reassigned_to else "delaying/removing the task"
             )
+            _delta_abs = abs(r['delta'])
+            _delta_sign = "reduction" if r['delta'] < 0 else "increase"
             intervention_assessment = (
                 f"FACT: Simulating {receiver_clause} on day {r['day']} changes "
                 f"{ctx.astronaut_name}'s drift from {r['original_drift']} "
                 f"({r['original_risk_level']}) to {r['whatif_drift']} "
-                f"({r['whatif_risk_level']}), a delta of {r['delta']:+.4f}. "
+                f"({r['whatif_risk_level']}), a {_delta_sign} of {_delta_abs:.4f} "
+                f"(delta {r['delta']:+.4f}). "
             )
             # Receiver tradeoff: state the other side of the coin
             if (ctx.receiver_drift_score is not None

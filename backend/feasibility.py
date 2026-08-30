@@ -168,9 +168,9 @@ def check_workload(
             f"[PROTOTYPE THRESHOLD] Adding {added_load:.1f} load units would bring "
             f"receiver to {projected_ratio:.2f}× their rolling average on "
             f"day {receiver_record.day} "
-            f"(threshold: {WORKLOAD_RATIO_THRESHOLD}×). "
-            f"This threshold is a prototype operational heuristic, "
-            f"not a validated capacity limit."
+            f"(prototype workload threshold: {WORKLOAD_RATIO_THRESHOLD}×). "
+            f"This is a prototype operational heuristic, "
+            f"not an operationally validated capacity limit."
         )
         return WorkloadFeasibility(
             receiver_load_that_day=current_load,
