@@ -58,6 +58,12 @@ WATSONX_API_KEY = os.environ.get("WATSONX_API_KEY")
 WATSONX_PROJECT_ID = os.environ.get("WATSONX_PROJECT_ID")
 WATSONX_MODEL_ID = os.environ.get("WATSONX_MODEL_ID", "ibm/granite-13b-instruct-v2")
 
+# ---------------------------------------------------------------------------
+# Ollama / local Granite config (from env; safe defaults for local dev)
+# ---------------------------------------------------------------------------
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "granite4.1:8b")
+
 # Required keys for each output schema; validated before accepting Granite's response.
 _EXPLANATION_REQUIRED_KEYS = {"astronaut_message", "flight_surgeon_brief", "suggested_intervention"}
 _BRIEF_REQUIRED_KEYS = {
@@ -427,6 +433,14 @@ HARD PROHIBITIONS — never do any of the following:
 - Claim an astronaut is safe or unsafe for duty.
 - Claim prototype thresholds are NASA operational or clinical thresholds.
 - If information is unavailable, say it is unavailable — do not infer it.
+- Use authoritative medical or operational directive language. The following words and
+  phrases are FORBIDDEN: "prescribe", "clear for duty", "must rest",
+  "implement corrective rest protocols", "is required to", "is mandated to",
+  "is ordered to", or any phrasing that frames a recommendation as a clinical
+  or command-level directive.
+  Use decision-support language instead: "consider additional rest opportunities",
+  "consider workload reduction", "for mission-control / human review",
+  "mission personnel may wish to consider".
 
 OUTPUT LABELLING — use exactly these prefixes in free-text fields:
   FACT: <deterministic backend result — only cite values from the context below>
@@ -454,10 +468,44 @@ Sub-scores:
 TASK
 ====
 Write a Mission Decision Brief that explicitly connects the supplied facts.
-- Link the highest sub-score(s) to the overall risk level.
-- If What-If data is supplied, compare the before/after drift values by number.
+
+SCOPE SEPARATION — MANDATORY:
+There are three distinct scopes in this brief. You must NEVER conflate them.
+Treat each scope as a completely separate statement, even within the same field.
+
+  SCOPE 1 — THIS ASTRONAUT, THIS DAY:
+    The individual drift score and risk level above apply only to
+    {ctx.astronaut_name} on day {ctx.day}. Use language like:
+    "{ctx.astronaut_name} is currently {ctx.risk_level} on day {ctx.day} with drift {ctx.drift_score}."
+
+  SCOPE 2 — MISSION-LEVEL PROJECTION (only if mission block is supplied):
+    The mission-level overall risk level is a crew-wide worst-case snapshot,
+    NOT derived from {ctx.astronaut_name}'s individual score. Introduce it
+    with words such as "Separately, the mission-level projection shows..." or
+    "Mission-wide, the worst projected day is...".
+
+  SCOPE 3 — WHAT-IF TRAJECTORY (only if What-If block is supplied):
+    The before/after drift values are a simulation result, not the current
+    measured state. Introduce them as "The What-If simulation shows..." or
+    "Under the proposed intervention, drift would change from X to Y."
+
+HARD SCOPE RULE — the following sentence structure is FORBIDDEN:
+  "The [individual] drift score of X places the mission at [mission-level risk]."
+Any sentence that uses {ctx.astronaut_name}'s individual drift score as the
+direct cause or evidence for a mission-level risk classification is incorrect
+and must not appear. The mission-level risk comes from the mission block, not
+from the individual astronaut block.
+
+Additional requirements:
+- Link the highest sub-score(s) to {ctx.astronaut_name}'s individual risk level (Scope 1 only).
+- If What-If data is supplied, compare the before/after drift values by number (Scope 3).
+  When describing a reassignment, always use the form
+  "reassigning [task name] from [source astronaut] to [receiver astronaut]".
+  Never use phrases like "swapping the receiver", "exchanging astronauts", or
+  "the receiver takes over" — those obscure which person is the source and which is the receiver.
 - If dependency impact is supplied, cite the downstream task count and names.
-- If feasibility data is supplied, explain what the status means and cite any reasons/warnings verbatim.
+- If feasibility data is supplied, state the exact status word (FEASIBLE / FEASIBLE_WITH_CAUTION /
+  NOT_FEASIBLE) and cite any reasons/warnings verbatim. Do not soften or reinterpret it.
 - Identify tradeoffs where a proposed intervention reduces one risk but may introduce another
   (based only on supplied data — do not speculate about conditions not in this context).
 - Recommended actions must be non-medical and operational only.
@@ -467,10 +515,10 @@ Write a Mission Decision Brief that explicitly connects the supplied facts.
 Respond ONLY in this exact JSON shape, no other text, no markdown fences:
 {{
   "astronaut_message": "<one calm, supportive sentence to the astronaut, plain language, no jargon, no diagnosis>",
-  "executive_summary": "<2-3 sentences synthesizing drift score, risk level, and the top 1-2 sub-score drivers>",
-  "primary_drivers": ["<sub-score name and value>", "..."],
+  "executive_summary": "<sentences that SEPARATELY address each scope present: first sentence covers {ctx.astronaut_name}'s individual drift/risk on day {ctx.day}; if mission summary supplied, a second sentence covers mission-wide risk using 'Separately' or 'Mission-wide'; if What-If supplied, a third sentence introduces it as a simulation result — never blend individual drift into mission-level claims>",
+  "primary_drivers": ["<sub-score name and value, referring to {ctx.astronaut_name}'s individual scores only>", "..."],
   "mission_implications": ["<one implication per item, citing task names or downstream counts where supplied>", "..."],
-  "intervention_assessment": "<if What-If data supplied: compare before/after drift by number and cite feasibility status; if not supplied: state 'No What-If context supplied.'>",
+  "intervention_assessment": "<if What-If data supplied: introduce as simulation, compare before/after drift by number, state feasibility status verbatim; if not supplied: state 'No What-If context supplied.'>",
   "recommended_actions": ["ACTION OPTION: <non-medical operational action>", "..."],
   "uncertainties": ["<prototype limitation or data gap>", "..."],
   "human_review_required": true
@@ -652,58 +700,138 @@ def _fallback_brief(ctx: BriefContext,
 # Mission Decision Brief -- public entry point
 # ---------------------------------------------------------------------------
 
+def _is_ollama_available() -> bool:
+    """
+    Probe whether the local Ollama server is reachable.
+    Uses a short timeout so a missing Ollama instance fails fast rather than
+    blocking the request thread for 30+ seconds.
+    """
+    try:
+        resp = httpx.get(OLLAMA_BASE_URL + "/", timeout=3)
+        return resp.is_success
+    except Exception:
+        return False
+
+
+def _call_ollama_brief(ctx: BriefContext) -> str:
+    """
+    Call the local Ollama /api/generate endpoint with JSON mode enabled.
+
+    "format": "json" instructs Ollama to grammar-sample the output so that
+    the model emits valid JSON directly, suppressing chain-of-thought or
+    free-text preamble.  "stream": false returns the full completion in one
+    response object whose generated text is in response["response"].
+
+    Raises httpx.HTTPError / httpx.TimeoutException on transport failure.
+    """
+    prompt = _build_brief_prompt(ctx)
+    resp = httpx.post(
+        f"{OLLAMA_BASE_URL}/api/generate",
+        json={
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json",
+        },
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()["response"]
+
+
+def _parse_brief_json(parsed: dict, source: str, ctx: BriefContext
+                      ) -> MissionDecisionBrief | None:
+    """
+    Validate a parsed JSON dict against _BRIEF_REQUIRED_KEYS and list-field
+    types.  Returns a MissionDecisionBrief on success, or None (after logging)
+    if validation fails.  Shared by both the watsonx and Ollama branches.
+    """
+    if not _BRIEF_REQUIRED_KEYS.issubset(parsed.keys()):
+        missing = _BRIEF_REQUIRED_KEYS - parsed.keys()
+        _log_fallback_reason("missing required fields in brief response",
+                             detail=str(missing))
+        return None
+
+    for list_field in ("primary_drivers", "mission_implications",
+                       "recommended_actions", "uncertainties"):
+        if not isinstance(parsed[list_field], list):
+            _log_fallback_reason(f"field '{list_field}' is not a list in brief response")
+            return None
+
+    return MissionDecisionBrief(
+        astronaut_message=str(parsed["astronaut_message"]),
+        executive_summary=str(parsed["executive_summary"]),
+        primary_drivers=list(parsed["primary_drivers"]),
+        mission_implications=list(parsed["mission_implications"]),
+        intervention_assessment=str(parsed["intervention_assessment"]),
+        recommended_actions=list(parsed["recommended_actions"]),
+        uncertainties=list(parsed["uncertainties"]),
+        human_review_required=True,   # enforced here, never trusted from model
+        source=source,
+    )
+
+
 def generate_mission_brief(ctx: BriefContext) -> MissionDecisionBrief:
     """
     Generate a MissionDecisionBrief from a pre-assembled BriefContext.
 
-    If watsonx credentials are available, calls IBM Granite and parses the
-    structured response.  Falls back to a deterministic template on any of:
-      - missing credentials
-      - network or HTTP error
-      - malformed or incomplete JSON from Granite
+    Provider order (approved):
+      1. watsonx  — if credentials are present AND the call succeeds.
+                    On any failure (network, parse, HTTP) fall through to (2).
+      2. Ollama   — if the local Ollama server is reachable.
+                    On any failure fall through to (3).
+      3. Deterministic fallback — always available, no external dependencies.
 
     human_review_required is always forced to True in Python after parsing,
     regardless of what the model returns.
     """
-    if not (WATSONX_API_KEY and WATSONX_PROJECT_ID):
-        return _fallback_brief(ctx, source="fallback_template:no_credentials")
+    # ------------------------------------------------------------------
+    # Branch 1: watsonx
+    # ------------------------------------------------------------------
+    if WATSONX_API_KEY and WATSONX_PROJECT_ID:
+        try:
+            access_token = _get_access_token()
+            prompt = _build_brief_prompt(ctx)
+            generated_text = _call_inference(access_token, prompt, max_new_tokens=600)
+            parsed = json.loads(generated_text.strip())
+            result = _parse_brief_json(parsed, source="watsonx", ctx=ctx)
+            if result is not None:
+                return result
+            # Validation failed — fall through to Ollama
+            _log_fallback_reason("watsonx brief validation failed; trying Ollama")
+        except (httpx.HTTPError, httpx.TimeoutException) as exc:
+            _log_fallback_reason("network/HTTP error during watsonx brief; trying Ollama",
+                                 exc=exc)
+        except (json.JSONDecodeError, KeyError, ValueError) as exc:
+            _log_fallback_reason("parse error during watsonx brief; trying Ollama", exc=exc)
+        except Exception as exc:
+            _log_fallback_reason("unexpected error during watsonx brief; trying Ollama",
+                                 exc=exc)
 
-    try:
-        access_token = _get_access_token()
-        prompt = _build_brief_prompt(ctx)
-        generated_text = _call_inference(access_token, prompt, max_new_tokens=600)
-        parsed = json.loads(generated_text.strip())
+    # ------------------------------------------------------------------
+    # Branch 2: local Ollama / IBM Granite
+    # ------------------------------------------------------------------
+    if _is_ollama_available():
+        try:
+            generated_text = _call_ollama_brief(ctx)
+            parsed = json.loads(generated_text.strip())
+            result = _parse_brief_json(parsed, source="ollama_granite", ctx=ctx)
+            if result is not None:
+                return result
+            # Validation failed — fall through to deterministic fallback
+            _log_fallback_reason("ollama_granite brief validation failed; using fallback")
+            return _fallback_brief(ctx, source="fallback_template:ollama_error")
+        except (httpx.HTTPError, httpx.TimeoutException) as exc:
+            _log_fallback_reason("network/HTTP error during ollama brief", exc=exc)
+            return _fallback_brief(ctx, source="fallback_template:ollama_error")
+        except (json.JSONDecodeError, KeyError, ValueError) as exc:
+            _log_fallback_reason("parse error during ollama brief", exc=exc)
+            return _fallback_brief(ctx, source="fallback_template:ollama_error")
+        except Exception as exc:
+            _log_fallback_reason("unexpected error during ollama brief", exc=exc)
+            return _fallback_brief(ctx, source="fallback_template:ollama_error")
 
-        if not _BRIEF_REQUIRED_KEYS.issubset(parsed.keys()):
-            missing = _BRIEF_REQUIRED_KEYS - parsed.keys()
-            _log_fallback_reason("missing required fields in brief response",
-                                 detail=str(missing))
-            return _fallback_brief(ctx, source="fallback_template:parse_error")
-
-        # Validate list fields are actually lists
-        for list_field in ("primary_drivers", "mission_implications",
-                           "recommended_actions", "uncertainties"):
-            if not isinstance(parsed[list_field], list):
-                _log_fallback_reason(f"field '{list_field}' is not a list in brief response")
-                return _fallback_brief(ctx, source="fallback_template:parse_error")
-
-        return MissionDecisionBrief(
-            astronaut_message=str(parsed["astronaut_message"]),
-            executive_summary=str(parsed["executive_summary"]),
-            primary_drivers=list(parsed["primary_drivers"]),
-            mission_implications=list(parsed["mission_implications"]),
-            intervention_assessment=str(parsed["intervention_assessment"]),
-            recommended_actions=list(parsed["recommended_actions"]),
-            uncertainties=list(parsed["uncertainties"]),
-            human_review_required=True,   # enforced here, never trusted from model
-            source="watsonx",
-        )
-    except (httpx.HTTPError, httpx.TimeoutException) as exc:
-        _log_fallback_reason("network/HTTP error during mission brief generation", exc=exc)
-        return _fallback_brief(ctx, source="fallback_template:network_error")
-    except (json.JSONDecodeError, KeyError, ValueError) as exc:
-        _log_fallback_reason("parse error during mission brief generation", exc=exc)
-        return _fallback_brief(ctx, source="fallback_template:parse_error")
-    except Exception as exc:
-        _log_fallback_reason("unexpected error during mission brief generation", exc=exc)
-        return _fallback_brief(ctx, source="fallback_template:network_error")
+    # ------------------------------------------------------------------
+    # Branch 3: deterministic fallback
+    # ------------------------------------------------------------------
+    return _fallback_brief(ctx, source="fallback_template:no_credentials")

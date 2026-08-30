@@ -295,11 +295,18 @@ def test_mission_brief_human_review_required_always_true(client):
     assert resp.json()["human_review_required"] is True
 
 
-def test_mission_brief_source_is_fallback_without_credentials(client):
-    """No watsonx credentials in test env -- must use fallback."""
+def test_mission_brief_source_is_not_watsonx_without_credentials(client):
+    """
+    Without watsonx credentials the response must never claim source='watsonx'.
+    It may come from the local Ollama provider (source='ollama_granite') or the
+    deterministic fallback (source='fallback_template:*') depending on whether
+    Ollama is running in the test environment.
+    """
     resp = client.post("/mission-brief", json={"astronaut_id": "A3", "day": 2})
     source = resp.json()["source"]
-    assert source.startswith("fallback_template"), f"Unexpected source: {source}"
+    assert source != "watsonx", f"Got 'watsonx' source without credentials: {source}"
+    assert source in ("ollama_granite", "fallback_template:no_credentials",
+                      "fallback_template:ollama_error"), f"Unexpected source: {source}"
 
 
 def test_mission_brief_primary_drivers_is_list(client):

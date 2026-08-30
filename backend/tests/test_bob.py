@@ -404,7 +404,9 @@ def test_generate_mission_brief_no_credentials_fallback():
     import bob
     bob.WATSONX_API_KEY = None
     bob.WATSONX_PROJECT_ID = None
-    result = generate_mission_brief(_base_ctx())
+    # Mock Ollama probe as unreachable so we reach the deterministic fallback
+    with patch("bob.httpx.get", side_effect=Exception("no ollama")):
+        result = generate_mission_brief(_base_ctx())
     assert isinstance(result, MissionDecisionBrief)
     assert result.source == "fallback_template:no_credentials"
     assert result.human_review_required is True
@@ -445,40 +447,47 @@ def test_generate_mission_brief_human_review_required_forced_true_even_if_model_
 
 
 def test_generate_mission_brief_network_error_falls_back(_fake_creds, capsys):
+    """
+    watsonx token request times out → fall through to Ollama probe.
+    Ollama also mocked as unreachable → deterministic fallback.
+    Source is fallback_template:no_credentials (final branch reached).
+    """
     import httpx
     with patch("bob.httpx.post", side_effect=_mock_httpx_post(
         raise_on_token=httpx.TimeoutException("timeout")
-    )):
+    )), patch("bob.httpx.get", side_effect=Exception("no ollama")):
         result = generate_mission_brief(_base_ctx())
-    assert result.source == "fallback_template:network_error"
+    assert result.source == "fallback_template:no_credentials"
     assert result.human_review_required is True
     captured = capsys.readouterr()
     assert "[bob.py fallback]" in captured.err
 
 
 def test_generate_mission_brief_http_error_on_inference_falls_back(_fake_creds, capsys):
+    """watsonx inference returns HTTP 503 → fall through to Ollama (mocked unreachable) → fallback."""
     import httpx
     with patch("bob.httpx.post", side_effect=_mock_httpx_post(
         raise_on_infer=httpx.HTTPStatusError("503", request=MagicMock(), response=MagicMock())
-    )):
+    )), patch("bob.httpx.get", side_effect=Exception("no ollama")):
         result = generate_mission_brief(_base_ctx())
-    assert result.source == "fallback_template:network_error"
+    assert result.source == "fallback_template:no_credentials"
     captured = capsys.readouterr()
     assert "[bob.py fallback]" in captured.err
 
 
 def test_generate_mission_brief_malformed_json_falls_back(_fake_creds, capsys):
+    """watsonx returns malformed JSON → fall through to Ollama (unreachable) → fallback."""
     with patch("bob.httpx.post", side_effect=_mock_httpx_post(
         infer_json={"results": [{"generated_text": "not valid JSON {{{{"}]}
-    )):
+    )), patch("bob.httpx.get", side_effect=Exception("no ollama")):
         result = generate_mission_brief(_base_ctx())
-    assert result.source == "fallback_template:parse_error"
+    assert result.source == "fallback_template:no_credentials"
     captured = capsys.readouterr()
     assert "[bob.py fallback]" in captured.err
 
 
 def test_generate_mission_brief_missing_required_fields_falls_back(_fake_creds, capsys):
-    # Omit 'executive_summary'
+    """watsonx returns JSON missing 'executive_summary' → fall through to Ollama (unreachable) → fallback."""
     partial = json.dumps({
         "astronaut_message": "OK",
         "primary_drivers": [],
@@ -491,21 +500,21 @@ def test_generate_mission_brief_missing_required_fields_falls_back(_fake_creds, 
     })
     with patch("bob.httpx.post", side_effect=_mock_httpx_post(
         infer_json={"results": [{"generated_text": partial}]}
-    )):
+    )), patch("bob.httpx.get", side_effect=Exception("no ollama")):
         result = generate_mission_brief(_base_ctx())
-    assert result.source == "fallback_template:parse_error"
+    assert result.source == "fallback_template:no_credentials"
     captured = capsys.readouterr()
     assert "[bob.py fallback]" in captured.err
 
 
 def test_generate_mission_brief_list_field_is_string_falls_back(_fake_creds):
-    """primary_drivers returned as a string instead of a list."""
+    """primary_drivers returned as a string → validation fails → Ollama (unreachable) → fallback."""
     bad = _valid_brief_json(primary_drivers="reaction time: 0.600")  # string not list
     with patch("bob.httpx.post", side_effect=_mock_httpx_post(
         infer_json={"results": [{"generated_text": bad}]}
-    )):
+    )), patch("bob.httpx.get", side_effect=Exception("no ollama")):
         result = generate_mission_brief(_base_ctx())
-    assert result.source == "fallback_template:parse_error"
+    assert result.source == "fallback_template:no_credentials"
 
 
 def test_generate_mission_brief_deterministic_context_in_response(_fake_creds):
@@ -605,3 +614,67 @@ def test_build_brief_prompt_requires_json_output_shape():
     assert "executive_summary" in prompt
     assert "primary_drivers" in prompt
     assert "intervention_assessment" in prompt
+
+
+def test_build_brief_prompt_contains_scope_separation_rules():
+    """The new scope-separation section must be present and name all three scopes."""
+    prompt = _build_brief_prompt(_base_ctx())
+    assert "SCOPE SEPARATION" in prompt
+    assert "SCOPE 1" in prompt
+    assert "SCOPE 2" in prompt
+    assert "SCOPE 3" in prompt
+
+
+def test_build_brief_prompt_contains_hard_scope_rule():
+    """The forbidden sentence pattern must be explicitly called out in the prompt."""
+    prompt = _build_brief_prompt(_base_ctx())
+    assert "HARD SCOPE RULE" in prompt
+    assert "FORBIDDEN" in prompt
+
+
+def test_build_brief_prompt_executive_summary_instruction_separates_scopes():
+    """The executive_summary field instruction must require scope separation, not blending."""
+    prompt = _build_brief_prompt(_base_ctx())
+    # The instruction should explicitly tell Granite to keep scopes separate
+    assert "SEPARATELY" in prompt or "separately" in prompt
+    # The old instruction that invited conflation must be gone
+    assert "synthesizing drift score, risk level" not in prompt
+
+
+def test_build_brief_prompt_scope1_references_subject_astronaut():
+    """SCOPE 1 instruction must be bound to the specific astronaut from the context."""
+    ctx = _base_ctx(astronaut_name="Chen", day=4, drift_score=0.72, risk_level="high")
+    prompt = _build_brief_prompt(ctx)
+    # Scope 1 example sentence should contain the actual astronaut name and day
+    assert "Chen" in prompt
+    assert "day 4" in prompt or "day=4" in prompt or "0.72" in prompt
+
+
+def test_build_brief_prompt_prohibits_authoritative_directive_language():
+    """Forbidden directive phrases must be listed in the prompt's HARD PROHIBITIONS."""
+    prompt = _build_brief_prompt(_base_ctx())
+    for phrase in ("prescribe", "clear for duty", "must rest",
+                   "implement corrective rest protocols"):
+        assert phrase in prompt, f"Forbidden phrase not called out in prompt: '{phrase}'"
+
+
+def test_build_brief_prompt_offers_decision_support_alternatives():
+    """Prompt must supply decision-support language alternatives to directive phrasing."""
+    prompt = _build_brief_prompt(_base_ctx())
+    assert "consider additional rest opportunities" in prompt
+    assert "consider workload reduction" in prompt
+    assert "mission personnel may wish to consider" in prompt
+
+
+def test_build_brief_prompt_reassignment_wording_rule_present():
+    """Prompt must specify the required 'reassigning X from A to B' wording for What-If."""
+    prompt = _build_brief_prompt(_base_ctx())
+    assert "reassigning [task name] from [source astronaut] to [receiver astronaut]" in prompt
+
+
+def test_build_brief_prompt_reassignment_forbidden_phrases_called_out():
+    """Prompt must explicitly forbid ambiguous receiver-swap phrases."""
+    prompt = _build_brief_prompt(_base_ctx())
+    assert "swapping the receiver" in prompt   # cited as forbidden
+    assert "exchanging astronauts" in prompt   # cited as forbidden
+    assert "the receiver takes over" in prompt  # cited as forbidden

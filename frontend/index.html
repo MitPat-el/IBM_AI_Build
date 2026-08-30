@@ -9,11 +9,11 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#001141;
-    --panel:#041728;
-    --panel-raised:#012749;
-    --hairline:#262E36;
-    --hairline-bright:#3A4550;
+    --bg:#00091f;
+    --panel:#010d1a;
+    --panel-raised:#021e35;
+    --hairline:#0d1e2c;
+    --hairline-bright:#1a3048;
     --text:#E8EDF1;
     --text-dim:#7C8794;
     --text-faint:#4B5560;
@@ -37,7 +37,7 @@
     min-height:100vh;
   }
 
-  ::selection{ background:var(--cyan); color:#04141a; }
+  ::selection{ background:var(--cyan); color:#020c15; }
 
   :focus-visible{
     outline:2px solid var(--cyan);
@@ -283,7 +283,7 @@
     cursor:pointer;
     transition:background .12s, color .12s;
   }
-  button:hover:not(:disabled){ background:var(--cyan); color:#04141a; }
+  button:hover:not(:disabled){ background:var(--cyan); color:#020c15; }
   button:disabled{ opacity:0.35; cursor:not-allowed; }
   button.ghost{ color:var(--text-dim); border-color:var(--hairline-bright); }
   button.ghost:hover:not(:disabled){ background:var(--panel-raised); color:var(--text); }
@@ -400,6 +400,123 @@
     display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;
   }
   footer span{ font-family:'IBM Plex Mono', monospace; font-size:10px; color:var(--text-faint); letter-spacing:0.05em; }
+
+  /* ---------- Brief header ---------- */
+  .brief-header{
+    border-left:3px solid var(--cyan);
+    padding:10px 12px;
+    background:rgba(90,209,224,0.06);
+    margin-bottom:14px;
+  }
+  .brief-header .brief-title{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px; font-weight:700;
+    letter-spacing:0.12em; text-transform:uppercase;
+    color:var(--cyan);
+  }
+  .brief-header .brief-sub{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--text-dim); margin-top:4px;
+  }
+  .brief-header .source-badge{
+    display:inline-block;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px; letter-spacing:0.06em; text-transform:uppercase;
+    padding:2px 6px;
+    border:1px solid var(--cyan);
+    color:var(--cyan); margin-left:10px; opacity:0.7;
+  }
+
+  /* Brief section priority tiers */
+  .brief-section{ margin-bottom:13px; }
+  .brief-section .eyebrow{ margin-bottom:5px; }
+  .brief-section p{ font-size:13px; line-height:1.55; }
+  .brief-section ul{ padding-left:16px; font-size:13px; line-height:1.7; }
+  .brief-section.primary{ background:rgba(255,255,255,0.025); padding:9px 10px; }
+  .brief-review{
+    border-top:1px solid var(--hairline); padding-top:10px; margin-top:6px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .brief-review .review-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--elevated);
+  }
+
+  /* ---------- What-If result card ---------- */
+  .wi-result{
+    margin-top:14px; padding:12px;
+    border:1px solid var(--hairline-bright);
+    background:var(--panel-raised);
+  }
+  .wi-result-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px; letter-spacing:0.12em; text-transform:uppercase;
+    color:var(--text-dim); margin-bottom:10px;
+  }
+  .wi-ba{
+    display:grid; grid-template-columns:1fr 28px 1fr;
+    align-items:center; gap:4px; margin-bottom:8px;
+  }
+  .wi-ba .side{ display:flex; flex-direction:column; gap:5px; }
+  .wi-ba .side-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-dim);
+  }
+  .wi-ba .drift-val{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:22px; font-weight:700; color:var(--text);
+  }
+  .wi-ba .arrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:16px; color:var(--text-dim); text-align:center;
+  }
+  .wi-delta{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px; font-weight:600; margin-top:4px;
+  }
+  .wi-delta.neg{ color:var(--nominal); }
+  .wi-delta.pos{ color:var(--critical); }
+  .wi-delta.zero{ color:var(--text-faint); }
+  .wi-tradeoff{
+    font-family:'IBM Plex Mono', monospace; font-size:10px;
+    color:var(--elevated); letter-spacing:0.04em;
+    margin-top:6px; padding-top:6px; border-top:1px solid var(--hairline);
+  }
+
+  /* Feasibility badge */
+  .feasibility-out{
+    margin-top:12px; padding:10px 12px;
+    border-left:3px solid var(--hairline-bright);
+  }
+  .feasibility-out.status-feasible{ border-left-color:var(--nominal); }
+  .feasibility-out.status-caution{ border-left-color:var(--elevated); }
+  .feasibility-out.status-infeasible{ border-left-color:var(--high); }
+  .feasibility-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;
+    margin-bottom:5px;
+  }
+  .feasibility-label.status-feasible{ color:var(--nominal); }
+  .feasibility-label.status-caution{ color:var(--elevated); }
+  .feasibility-label.status-infeasible{ color:var(--high); }
+  .feasibility-reasons{ font-size:12px; line-height:1.5; color:var(--text-dim); }
+
+  /* Human auth bar */
+  .human-auth-bar{
+    margin-top:10px; padding:6px 10px;
+    border:1px solid var(--hairline-bright);
+    display:flex; align-items:center; gap:8px;
+  }
+  .human-auth-bar span{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-dim);
+  }
+
+  /* Cascade hint emphasis */
+  #graphHint{ font-size:12px; }
+  .cascade-highlight{ color:var(--cyan); font-weight:700; }
 </style>
 </head>
 <body>
@@ -410,7 +527,7 @@
     <div class="header-row">
       <div class="brand">
         <h1>FATIGUE&nbsp;CONSOLE <span>// crew drift monitor</span></h1>
-        <div class="sub">AUGMENT · NASA HRP FATIGUE MODEL · WATSONX BRIEFING LAYER</div>
+        <div class="sub">NASA HRP-INSPIRED FATIGUE MODEL · IBM GRANITE DECISION SUPPORT</div>
       </div>
       <div class="status-cluster">
         <div class="status-item">
@@ -486,6 +603,9 @@
             </div>
           </div>
           <button class="full" id="wiRunBtn">Simulate Intervention</button>
+          <div id="wiResultOut"></div>
+          <div id="wiFeasibilityOut"></div>
+          <div id="wiHumanAuthOut"></div>
           <table class="compare-table" id="wiTable" style="display:none;">
             <thead><tr><th>Day</th><th>Before</th><th>After</th><th>Δ</th></tr></thead>
             <tbody></tbody>
@@ -563,6 +683,7 @@
   <footer>
     <span>DRIFT SCORE = w1·REACTION_TIME + w2·SLEEP_DEBT + w3·CIRCADIAN + w4·WORKLOAD</span>
     <span id="footerMeta">—</span>
+    <span>SIMULATED 6-DAY MISSION · LITERATURE-INFORMED PROTOTYPE · NOT FOR OPERATIONAL USE</span>
   </footer>
 </div>
 
@@ -752,33 +873,79 @@ function buildSparkline(points, recordedCount, selectedDay){
   </svg>`;
 }
 
+function briefSourceLabel(source){
+  if(source === 'watsonx')        return 'WATSONX · REMOTE';
+  if(source === 'ollama_granite') return 'IBM GRANITE · LOCAL';
+  if(source && source.startsWith('fallback_template')) return 'DETERMINISTIC FALLBACK';
+  return source ? source.toUpperCase() : 'UNKNOWN';
+}
+
 async function requestBriefing(astronautId, day){
   const out = $('#briefingOut');
-  out.innerHTML = `<div class="briefing"><div class="empty-state">&gt; REQUESTING BRIEFING FROM BOB...</div></div>`;
+  out.innerHTML = `<div class="briefing"><div class="empty-state">&gt; REQUESTING IBM GRANITE MISSION BRIEF...</div></div>`;
   try{
-    const res = await api(`/explain/${astronautId}/${day}`);
-    if(!res.triggered){
-      out.innerHTML = `<div class="briefing">
-        <div class="briefing-block">
-          <div class="eyebrow">Status</div>
-          <p>Drift score ${res.drift_score.toFixed(2)} — below alert threshold. No briefing generated.</p>
-        </div>
-      </div>`;
-      return;
-    }
+    const wiTaskId   = $('#wiTask')    ? $('#wiTask').value    || null : null;
+    const wiReassign = $('#wiReassign') ? $('#wiReassign').value || null : null;
+
+    const body = {
+      astronaut_id: astronautId,
+      day: day,
+      include_mission_summary: true,
+    };
+    if(wiTaskId)   body.whatif_task_id     = wiTaskId;
+    if(wiReassign) body.whatif_reassign_to = wiReassign;
+    if(wiTaskId)   body.impact_task_id     = wiTaskId;
+
+    const res = await api('/mission-brief', { method:'POST', body: JSON.stringify(body) });
+    const listItems = arr => arr.map(s => `<li>${s}</li>`).join('');
+
     out.innerHTML = `<div class="briefing">
-      <div class="briefing-block">
+
+      <div class="brief-header">
+        <div class="brief-title">IBM GRANITE · MISSION DECISION BRIEF<span class="source-badge">${briefSourceLabel(res.source)}</span></div>
+        <div class="brief-sub">AI-GENERATED INTERPRETATION · HUMAN REVIEW REQUIRED</div>
+      </div>
+
+      <div class="brief-section primary">
+        <div class="eyebrow">Current State</div>
+        <p>${res.executive_summary}</p>
+      </div>
+
+      <div class="brief-section">
         <div class="eyebrow">To Astronaut</div>
         <p>${res.astronaut_message}</p>
       </div>
-      <div class="briefing-block">
-        <div class="eyebrow">Flight Surgeon Brief<span class="source-tag">${res.source}</span></div>
-        <p>${res.flight_surgeon_brief}</p>
+
+      <div class="brief-section primary">
+        <div class="eyebrow">Mission Implications</div>
+        <ul>${listItems(res.mission_implications)}</ul>
       </div>
-      <div class="briefing-block">
-        <div class="eyebrow">Suggested Intervention</div>
-        <p>${res.suggested_intervention}</p>
+
+      <div class="brief-section primary">
+        <div class="eyebrow">Intervention Assessment</div>
+        <p>${res.intervention_assessment}</p>
       </div>
+
+      <div class="brief-section primary">
+        <div class="eyebrow">Action Options</div>
+        <ul>${listItems(res.recommended_actions)}</ul>
+      </div>
+
+      <div class="brief-section">
+        <div class="eyebrow">Primary Drivers</div>
+        <ul>${listItems(res.primary_drivers)}</ul>
+      </div>
+
+      <div class="brief-section">
+        <div class="eyebrow">Uncertainties &amp; Limitations</div>
+        <ul>${listItems(res.uncertainties)}</ul>
+      </div>
+
+      <div class="brief-review">
+        <span class="review-label">&#9888; HUMAN REVIEW REQUIRED</span>
+        <span class="eyebrow">All decisions must be made by authorized mission personnel</span>
+      </div>
+
     </div>`;
   }catch(err){
     out.innerHTML = `<div class="briefing"><div class="empty-state">&gt; BRIEFING ERROR: ${err.message}</div></div>`;
@@ -843,6 +1010,8 @@ $('#wiRunBtn').addEventListener('click', async () => {
   btn.disabled = true; btn.textContent = 'Simulating...';
   try{
     const res = await api('/whatif/reassign', { method:'POST', body: JSON.stringify(body) });
+    renderWhatIfSummary(res.comparison, res.day_modified);
+    renderWhatIfFeasibility(res.feasibility);
     renderWhatIfTable(res.comparison);
     renderWhatIfDependencyImpact(res.dependency_impact);
     showToast(`Simulated intervention for ${res.astronaut_id} from day ${res.day_modified}`);
@@ -870,6 +1039,66 @@ function renderWhatIfDependencyImpact(impact){
         <span class="risk-pill ${riskClass(d.risk_level || 'nominal')}"><span class="dot"></span>${d.risk_level || '—'}</span>
       </div>`).join('')}
     </div>
+  </div>`;
+}
+
+function renderWhatIfSummary(comparison, dayModified){
+  const out = $('#wiResultOut');
+  // Use the intervention day row from the API response (res.day_modified)
+  const row = comparison.find(r => r.day === dayModified) || comparison[0];
+  if(!row){ out.innerHTML = ''; return; }
+
+  const delta = row.delta;
+  const deltaCls = delta < 0 ? 'neg' : (delta > 0 ? 'pos' : 'zero');
+  const deltaSign = delta > 0 ? '+' : '';
+
+  // Check whether any later day worsens relative to the intervention day
+  const interventionIdx = comparison.findIndex(r => r.day === row.day);
+  const laterWorse = comparison.slice(interventionIdx + 1).some(r => r.whatif_drift > row.whatif_drift);
+
+  out.innerHTML = `<div class="wi-result">
+    <div class="wi-result-label">Intervention Analysis · Day ${row.day}</div>
+    <div class="wi-ba">
+      <div class="side">
+        <span class="side-label">Before</span>
+        <span class="drift-val">${row.original_drift.toFixed(4)}</span>
+        <span class="risk-pill ${riskClass(row.original_risk_level)}"><span class="dot"></span>${row.original_risk_level}</span>
+      </div>
+      <div class="arrow">→</div>
+      <div class="side">
+        <span class="side-label">After</span>
+        <span class="drift-val">${row.whatif_drift.toFixed(4)}</span>
+        <span class="risk-pill ${riskClass(row.whatif_risk_level)}"><span class="dot"></span>${row.whatif_risk_level}</span>
+      </div>
+    </div>
+    <div class="wi-delta ${deltaCls}">Δ ${deltaSign}${delta.toFixed(4)}</div>
+    ${laterWorse ? `<div class="wi-tradeoff">⚠ Later mission days show increased drift — review full trajectory below</div>` : ''}
+  </div>`;
+}
+
+function renderWhatIfFeasibility(feasibility){
+  const out = $('#wiFeasibilityOut');
+  const authOut = $('#wiHumanAuthOut');
+  if(!feasibility){ out.innerHTML = ''; authOut.innerHTML = ''; return; }
+
+  const statusMap = {
+    feasible:              { cls:'status-feasible',    label:'FEASIBLE' },
+    feasible_with_caution: { cls:'status-caution',     label:'FEASIBLE WITH CAUTION' },
+    not_feasible:          { cls:'status-infeasible',  label:'NOT FEASIBLE' },
+  };
+  const s = statusMap[feasibility.status] || { cls:'', label: feasibility.status.toUpperCase() };
+
+  const reasonsHtml = (feasibility.reasons || []).concat(feasibility.warnings || [])
+    .map(r => `<p class="feasibility-reasons">${r}</p>`).join('');
+
+  out.innerHTML = `<div class="feasibility-out ${s.cls}">
+    <div class="eyebrow">Feasibility</div>
+    <div class="feasibility-label ${s.cls}">${s.label}</div>
+    ${reasonsHtml}
+  </div>`;
+
+  authOut.innerHTML = `<div class="human-auth-bar">
+    <span>DECISION SUPPORT · HUMAN AUTHORIZATION REQUIRED</span>
   </div>`;
 }
 
@@ -1043,7 +1272,7 @@ async function traceCascade(taskId){
       el.classList.toggle('dimmed', !relevant);
     });
 
-    $('#graphHint').textContent = `${taskId} → ${res.downstream_count} downstream task(s)`;
+    $('#graphHint').innerHTML = `<span class="cascade-highlight">${taskId}</span> → <span class="cascade-highlight">${res.downstream_count}</span> DOWNSTREAM TASKS`;
 
     if(res.downstream.length === 0){
       readout.innerHTML = `<div class="impact-readout">
