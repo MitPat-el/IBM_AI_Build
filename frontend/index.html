@@ -235,9 +235,120 @@
   .cell.risk-high-bg{ background:var(--high); }
   .cell.risk-critical-bg{ background:var(--critical); }
 
+  /* Simulation-mode overlaid cells get a hatched border */
+  .cell.sim-modified{
+    outline: 2px solid rgba(255,255,255,0.55);
+    outline-offset: -2px;
+    z-index: 1;
+  }
+  .cell.sim-modified .score::after{
+    content: "▲";
+    font-size: 7px;
+    position: absolute;
+    top: 3px;
+    right: 4px;
+    opacity: 0.7;
+  }
+
   @keyframes reveal{
     from{ opacity:0; transform:translateY(2px); }
     to{ opacity:1; transform:translateY(0); }
+  }
+
+  /* Simulation mode banner in the matrix panel */
+  .sim-mode-bar{
+    display:none;
+    align-items:center;
+    justify-content:space-between;
+    background: rgba(90,209,224,0.07);
+    border:1px solid rgba(90,209,224,0.22);
+    padding:6px 12px;
+    margin-bottom:10px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--cyan);
+    gap:10px;
+  }
+  .sim-mode-bar.active{ display:flex; }
+  .sim-mode-bar button{
+    font-size:9px;
+    padding:4px 10px;
+    border-color:rgba(90,209,224,0.35);
+    color:var(--cyan);
+  }
+  .sim-mode-bar button:hover:not(:disabled){ background:rgba(90,209,224,0.15); color:var(--cyan); }
+
+  /* Sim toggle button in what-if panel header */
+  .sim-toggle-btn{ }
+  .sim-toggle-btn.active{
+    background:rgba(90,209,224,0.12);
+    color:var(--cyan);
+    border-color:var(--cyan);
+  }
+
+  /* Intervention history stack */
+  .wi-history{
+    margin-top:14px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .wi-history-heading{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--text-faint);
+    margin-bottom:2px;
+  }
+  .wi-history-chip{
+    display:flex;
+    align-items:flex-start;
+    gap:8px;
+    background:var(--panel-raised);
+    border:1px solid var(--hairline-bright);
+    padding:7px 10px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px;
+    line-height:1.5;
+  }
+  .wi-history-chip .chip-num{
+    color:var(--text-faint);
+    flex-shrink:0;
+    padding-top:1px;
+  }
+  .wi-history-chip .chip-body{
+    flex:1;
+    color:var(--text-dim);
+  }
+  .wi-history-chip .chip-body strong{ color:var(--cyan); }
+  .wi-history-chip .chip-body .chip-delta{
+    display:inline-block;
+    margin-top:2px;
+    color:var(--nominal);
+    font-size:9px;
+  }
+  .wi-history-chip .chip-body .chip-delta.worse{ color:var(--critical); }
+  .wi-history-chip .chip-remove{
+    flex-shrink:0;
+    background:transparent;
+    border:none;
+    color:var(--text-faint);
+    cursor:pointer;
+    padding:0 2px;
+    font-size:13px;
+    line-height:1;
+    letter-spacing:0;
+    text-transform:none;
+  }
+  .wi-history-chip .chip-remove:hover{ color:var(--critical); background:transparent; }
+  .wi-history-empty{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px;
+    color:var(--text-faint);
+    letter-spacing:0.06em;
   }
 
   .legend{
@@ -524,6 +635,157 @@
   /* Cascade hint emphasis */
   #graphHint{ font-size:12px; }
   .cascade-highlight{ color:var(--cyan); font-weight:700; }
+
+  /* ================================================================
+     SIMULATION LOG PANEL
+  ================================================================ */
+  .simlog-panel{ margin-top:18px; }
+
+  .simlog-empty{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px; color:var(--text-faint);
+    letter-spacing:0.06em; padding:20px 4px;
+  }
+
+  .simlog-toolbar{
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  }
+  .simlog-toolbar .simlog-count{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px; color:var(--text-faint);
+    letter-spacing:0.08em; text-transform:uppercase;
+    margin-left:auto;
+  }
+
+  /* Log entry card */
+  .simlog-entry{
+    border:1px solid var(--hairline-bright);
+    background:var(--panel-raised);
+    margin-bottom:10px;
+    transition:border-color .15s;
+  }
+  .simlog-entry.saved  { border-left:3px solid var(--nominal); }
+  .simlog-entry.pending{ border-left:3px solid var(--elevated); }
+  .simlog-entry.discarded{ opacity:0.38; filter:grayscale(0.5); pointer-events:none; }
+
+  .simlog-entry-head{
+    display:flex; align-items:center; gap:10px;
+    padding:8px 12px;
+    border-bottom:1px solid var(--hairline);
+    flex-wrap:wrap;
+  }
+  .simlog-seq{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px; font-weight:700; color:var(--text-faint);
+    letter-spacing:0.06em; flex-shrink:0;
+  }
+  .simlog-ts{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px; color:var(--text-faint);
+    letter-spacing:0.04em;
+  }
+  .simlog-status-badge{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px; font-weight:700;
+    letter-spacing:0.1em; text-transform:uppercase;
+    padding:2px 7px;
+    border:1px solid;
+    flex-shrink:0;
+  }
+  .simlog-status-badge.pending { color:var(--elevated); border-color:rgba(255,203,71,0.35); background:rgba(255,203,71,0.07); }
+  .simlog-status-badge.saved   { color:var(--nominal);  border-color:rgba(76,215,135,0.35); background:rgba(76,215,135,0.07); }
+  .simlog-status-badge.discarded{ color:var(--text-faint); border-color:var(--hairline-bright); }
+
+  .simlog-entry-actions{ margin-left:auto; display:flex; gap:6px; flex-shrink:0; }
+  .simlog-entry-actions button{
+    font-size:9px; padding:4px 10px;
+    letter-spacing:0.08em;
+  }
+  .simlog-entry-actions .btn-save{
+    color:var(--nominal); border-color:rgba(76,215,135,0.4);
+  }
+  .simlog-entry-actions .btn-save:hover:not(:disabled){
+    background:rgba(76,215,135,0.14); color:var(--nominal);
+  }
+  .simlog-entry-actions .btn-discard{
+    color:var(--text-faint); border-color:var(--hairline-bright);
+  }
+  .simlog-entry-actions .btn-discard:hover:not(:disabled){
+    background:rgba(255,75,75,0.1); color:var(--critical); border-color:rgba(255,75,75,0.35);
+  }
+
+  /* Log entry body */
+  .simlog-entry-body{
+    display:grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap:0;
+  }
+  @media(max-width:900px){ .simlog-entry-body{ grid-template-columns:1fr; } }
+
+  .simlog-col{
+    padding:10px 14px;
+    border-right:1px solid var(--hairline);
+    font-size:12px; line-height:1.6;
+  }
+  .simlog-col:last-child{ border-right:none; }
+  .simlog-col-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:9px; letter-spacing:0.12em; text-transform:uppercase;
+    color:var(--text-faint); margin-bottom:6px;
+  }
+
+  /* Score mini-display inside log */
+  .simlog-scores{
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:4px;
+  }
+  .simlog-score-val{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:18px; font-weight:700;
+  }
+  .simlog-score-val.improved{ color:var(--nominal); }
+  .simlog-score-val.worsened{ color:var(--critical); }
+  .simlog-score-val.unchanged{ color:var(--text-dim); }
+  .simlog-arrow{ color:var(--text-faint); font-size:13px; }
+  .simlog-delta{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px; font-weight:600; margin-top:2px;
+  }
+  .simlog-delta.neg{ color:var(--nominal); }
+  .simlog-delta.pos{ color:var(--critical); }
+
+  .simlog-feasibility{
+    display:inline-block; margin-top:6px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;
+    padding:2px 8px; border:1px solid;
+  }
+  .simlog-feasibility.feasible      { color:var(--nominal);  border-color:rgba(76,215,135,0.35); }
+  .simlog-feasibility.caution        { color:var(--elevated); border-color:rgba(255,203,71,0.35); }
+  .simlog-feasibility.infeasible     { color:var(--high);     border-color:rgba(255,154,61,0.4);  }
+  .simlog-feasibility.none           { color:var(--text-faint); border-color:var(--hairline-bright); }
+
+  .simlog-downstream{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px; color:var(--text-dim);
+    display:flex; flex-direction:column; gap:3px; margin-top:4px;
+  }
+  .simlog-downstream .ds-row{
+    display:flex; align-items:center; gap:6px;
+  }
+  .simlog-downstream .ds-tid{ color:var(--cyan); }
+  .simlog-downstream .ds-name{ color:var(--text-dim); font-size:10px; }
+  .simlog-more{ color:var(--text-faint); font-size:10px; margin-top:2px; }
+
+  .simlog-notes-wrap{ margin-top:8px; }
+  .simlog-notes{
+    width:100%; background:var(--panel);
+    border:1px solid var(--hairline-bright);
+    color:var(--text); font-family:'IBM Plex Mono', monospace;
+    font-size:11px; padding:6px 8px; resize:vertical;
+    min-height:48px; line-height:1.5;
+  }
+  .simlog-notes:focus{ outline:none; border-color:var(--cyan); }
+  .simlog-notes::placeholder{ color:var(--text-faint); }
 </style>
 </head>
 <body>
@@ -567,6 +829,10 @@
           <button class="ghost" id="refreshBtn">Refresh</button>
         </div>
         <div class="panel-body">
+          <div class="sim-mode-bar" id="simModeBar">
+            <span>&#9650; SIMULATION MODE &mdash; matrix showing what-if overlay</span>
+            <button id="simResetBtn">Reset Simulation</button>
+          </div>
           <div class="matrix-wrap">
             <table class="matrix" id="matrixTable">
               <thead><tr><th></th></tr></thead>
@@ -585,6 +851,7 @@
       <section class="panel">
         <div class="panel-head">
           <span class="panel-title">What-If Simulator</span>
+          <button class="ghost sim-toggle-btn" id="simModeToggle">Sim Mode: OFF</button>
         </div>
         <div class="panel-body">
           <div class="field">
@@ -619,6 +886,11 @@
             <tbody></tbody>
           </table>
           <div id="wiDependencyOut"></div>
+          <!-- Intervention history stack (visible in sim mode) -->
+          <div class="wi-history" id="wiHistory" style="display:none;">
+            <div class="wi-history-heading">Queued Interventions</div>
+            <div id="wiHistoryList"><span class="wi-history-empty">No interventions yet.</span></div>
+          </div>
         </div>
       </section>
 
@@ -688,6 +960,24 @@
     </div>
   </section>
 
+  <!-- ════════════ SIMULATION LOG ════════════ -->
+  <section class="panel simlog-panel" id="simLogPanel" style="display:none;">
+    <div class="panel-head">
+      <span class="panel-title">Simulation Log</span>
+      <div class="simlog-toolbar">
+        <button class="ghost" id="simLogRefreshBtn" title="Remove discarded entries from view">Refresh Log</button>
+        <button class="ghost" id="simLogClearBtn" title="Clear all log entries">Clear Log</button>
+        <button class="ghost" id="simLogExportBtn" title="Download session log as JSON">Export JSON</button>
+        <span class="simlog-count" id="simLogCount">0 entries</span>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div id="simLogEntries">
+        <div class="simlog-empty">&gt; No interventions logged yet — run a simulation to start recording.</div>
+      </div>
+    </div>
+  </section>
+
   <footer>
     <span>DRIFT SCORE = w1·REACTION_TIME + w2·SLEEP_DEBT + w3·CIRCADIAN + w4·WORKLOAD</span>
     <span id="footerMeta">—</span>
@@ -745,7 +1035,14 @@ async function boot(){
     missionMap = missionRes;
     setLink(true);
     renderHeader(summaryRes, missionRes.length);
-    renderMatrix();
+    // If sim mode is active, live data refreshed under us — rebuild the overlay
+    // so any stacked interventions are re-applied on top of the fresh baseline.
+    if(simModeActive){
+      rebuildOverlay();
+      renderMatrix(overlayScores);
+    } else {
+      renderMatrix();
+    }
     await loadDependencyGraph(); // populateWhatIf() below needs taskGraph.nodes populated first
     populateWhatIf();
     $('#footerMeta').textContent = `${crew.length} CREW · ${missionRes.length} DAY MISSION`;
@@ -771,7 +1068,9 @@ function renderHeader(summary, numDays){
 }
 
 /* ---------------- matrix ---------------- */
-function renderMatrix(){
+// overlay: optional { [astronaut_id]: { [day]: { drift_score, risk_level, modified } } }
+// When provided (sim mode), cells display the overlaid values instead of the live ones.
+function renderMatrix(overlay){
   const thead = $('#matrixTable thead tr');
   const tbody = $('#matrixTable tbody');
   thead.innerHTML = '<th></th>' + missionMap.map(d => `<th class="day-col">D${d.day}</th>`).join('');
@@ -784,14 +1083,20 @@ function renderMatrix(){
     tr.appendChild(labelTd);
 
     missionMap.forEach((d, i) => {
-      const cellData = d.per_astronaut[astro.astronaut_id];
+      const liveCellData = d.per_astronaut[astro.astronaut_id];
+      // Use overlay if provided, otherwise use live data
+      const cellData = (overlay && overlay[astro.astronaut_id] && overlay[astro.astronaut_id][d.day])
+        ? overlay[astro.astronaut_id][d.day]
+        : liveCellData;
+      const isModified = cellData.modified === true;
+
       const td = document.createElement('td');
       const div = document.createElement('div');
-      div.className = `cell ${riskClass(cellData.risk_level)}-bg`;
+      div.className = `cell ${riskClass(cellData.risk_level)}-bg${isModified ? ' sim-modified' : ''}`;
       div.style.animationDelay = (i * 28) + 'ms';
       div.tabIndex = 0;
       div.setAttribute('role','button');
-      div.setAttribute('aria-label', `${astro.name} day ${d.day}: ${cellData.risk_level}, drift ${cellData.drift_score}`);
+      div.setAttribute('aria-label', `${astro.name} day ${d.day}: ${cellData.risk_level}, drift ${cellData.drift_score}${isModified ? ' (simulated)' : ''}`);
       div.innerHTML = `<span class="score">${cellData.drift_score.toFixed(2)}</span>`;
       div.addEventListener('click', () => selectCell(astro.astronaut_id, d.day, div));
       div.addEventListener('keydown', e => { if(e.key==='Enter' || e.key===' '){ e.preventDefault(); selectCell(astro.astronaut_id, d.day, div);} });
@@ -1001,6 +1306,425 @@ function setWhatIfMode(taskId){
 
 $('#wiDelta').addEventListener('input', e => { $('#wiDeltaVal').textContent = '-' + e.target.value; });
 
+/* ═══════════════════════════════════════════════════════════
+   SIMULATION MODE
+   Accumulates multiple what-if interventions, overlays their
+   results onto the Crew Risk Matrix, and maintains a history
+   list with per-entry removal. The live DB data is never
+   mutated — all changes are kept in simulationStack and the
+   derived overlayScores map.
+═══════════════════════════════════════════════════════════ */
+
+let simModeActive = false;
+
+// Stack entry: { id, label, astronaut_id, reassigned_to, day_modified, comparison[] }
+let simulationStack = [];
+
+// Derived from stack: { [astronaut_id]: { [day]: { drift_score, risk_level } } }
+let overlayScores = {};
+
+function riskLevelFromScore(score){
+  if(score >= 0.55) return 'critical';
+  if(score >= 0.45) return 'high';
+  if(score >= 0.32) return 'elevated';
+  return 'nominal';
+}
+
+function rebuildOverlay(){
+  // Start from live missionMap values, then replay each stack entry in order
+  overlayScores = {};
+  crew.forEach(a => {
+    overlayScores[a.astronaut_id] = {};
+    missionMap.forEach(d => {
+      const live = d.per_astronaut[a.astronaut_id];
+      overlayScores[a.astronaut_id][d.day] = {
+        drift_score: live.drift_score,
+        risk_level:  live.risk_level,
+        modified:    false,
+      };
+    });
+  });
+
+  simulationStack.forEach(entry => {
+    // Apply the whatif trajectory for the source astronaut from day_modified onward
+    entry.comparison.forEach(row => {
+      const s = overlayScores[entry.astronaut_id];
+      if(s && s[row.day] !== undefined){
+        s[row.day] = {
+          drift_score: row.whatif_drift,
+          risk_level:  row.whatif_risk_level || riskLevelFromScore(row.whatif_drift),
+          modified:    true,
+        };
+      }
+    });
+    // If reassigned_to is named, bump that astronaut's workload naively:
+    // we don't have a full comparison for the receiver, so we mark their
+    // day_modified cell as modified and add a small visual-only score bump.
+    if(entry.reassigned_to){
+      const rs = overlayScores[entry.reassigned_to];
+      if(rs && rs[entry.day_modified] !== undefined){
+        const base = rs[entry.day_modified].drift_score;
+        const bumped = Math.min(0.999, base + Math.abs(entry.load_delta || 0) * 0.012);
+        rs[entry.day_modified] = {
+          drift_score: bumped,
+          risk_level:  riskLevelFromScore(bumped),
+          modified:    true,
+        };
+      }
+    }
+  });
+}
+
+function setSimMode(active){
+  simModeActive = active;
+  const btn   = $('#simModeToggle');
+  const bar   = $('#simModeBar');
+  const hist  = $('#wiHistory');
+
+  btn.textContent = active ? 'Sim Mode: ON' : 'Sim Mode: OFF';
+  btn.classList.toggle('active', active);
+  bar.classList.toggle('active', active);
+  hist.style.display = active ? 'flex' : 'none';
+
+  if(!active){
+    // When toggling off, revert matrix to live data
+    renderMatrix();
+  } else {
+    rebuildOverlay();
+    renderMatrix(overlayScores);
+  }
+}
+
+function renderHistoryList(){
+  const list = $('#wiHistoryList');
+  if(simulationStack.length === 0){
+    list.innerHTML = '<span class="wi-history-empty">No interventions yet.</span>';
+    return;
+  }
+  list.innerHTML = simulationStack.map((entry, idx) => {
+    const dayRow = entry.comparison.find(r => r.day === entry.day_modified) || entry.comparison[0];
+    const delta = dayRow ? (dayRow.whatif_drift - dayRow.original_drift) : 0;
+    const deltaSign = delta > 0 ? '+' : '';
+    const deltaCls  = delta > 0 ? 'worse' : '';
+    const reassignLabel = entry.reassigned_to ? ` → ${entry.reassigned_to}` : ' (delay/drop)';
+    return `<div class="wi-history-chip">
+      <span class="chip-num">#${idx + 1}</span>
+      <span class="chip-body">
+        <strong>${entry.astronaut_id}</strong> D${entry.day_modified}${reassignLabel}<br/>
+        ${entry.task_id ? `Task ${entry.task_id} · ` : ''}
+        <span class="chip-delta ${deltaCls}">Δ ${deltaSign}${delta.toFixed(4)} at D${entry.day_modified}</span>
+      </span>
+      <button class="chip-remove" title="Remove intervention" onclick="removeIntervention(${idx})">×</button>
+    </div>`;
+  }).join('');
+}
+
+function removeIntervention(idx){
+  simulationStack.splice(idx, 1);
+  rebuildOverlay();
+  renderHistoryList();
+  if(simModeActive) renderMatrix(overlayScores);
+  showToast(`Intervention #${idx + 1} removed from simulation`);
+}
+
+function resetSimulation(){
+  simulationStack = [];
+  overlayScores = {};
+  renderHistoryList();
+  // Clear feasibility + what-if output panels
+  $('#wiResultOut').innerHTML = '';
+  $('#wiFeasibilityOut').innerHTML = '';
+  $('#wiHumanAuthOut').innerHTML = '';
+  $('#wiTable').style.display = 'none';
+  $('#wiTable').querySelector('tbody').innerHTML = '';
+  $('#wiDependencyOut').innerHTML = '';
+  setSimMode(false);
+  showToast('Simulation reset — showing live mission data');
+}
+
+$('#simModeToggle').addEventListener('click', () => setSimMode(!simModeActive));
+$('#simResetBtn').addEventListener('click', resetSimulation);
+
+/* ═══════════════════════════════════════════════════════════
+   SIMULATION LOG
+   A persistent, full-session record of every intervention that
+   was simulated. Lives independently of the stack — entries
+   stay in the log even after being removed from the active
+   simulation overlay. Each entry can be:
+     · pending  — simulated but not yet committed
+     · saved    — user clicked Save (marked as a keeper)
+     · discarded — user clicked Discard (removed from stack + flagged)
+═══════════════════════════════════════════════════════════ */
+
+// Full log — never shrinks, only appended to (or cleared)
+// Entry shape: { id, seq, ts, status, entry (stack entry), feasibility, dependency_impact }
+let simLog = [];
+
+function simLogEntryHtml(logEntry){
+  const { id, seq, ts, status, entry, feasibility, dependency_impact } = logEntry;
+  const dayRow = entry.comparison.find(r => r.day === entry.day_modified) || entry.comparison[0];
+  const before  = dayRow ? dayRow.original_drift : null;
+  const after   = dayRow ? dayRow.whatif_drift   : null;
+  const delta   = (before !== null && after !== null) ? (after - before) : null;
+  const deltaSign = delta !== null && delta > 0 ? '+' : '';
+  const deltaCls  = delta === null ? '' : (delta < 0 ? 'neg' : (delta > 0 ? 'pos' : ''));
+  const beforeRisk = dayRow ? dayRow.original_risk_level : '—';
+  const afterRisk  = dayRow ? (dayRow.whatif_risk_level || riskLevelFromScore(after)) : '—';
+
+  const scoreCls = delta === null ? 'unchanged' : (delta < 0 ? 'improved' : (delta > 0 ? 'worsened' : 'unchanged'));
+
+  // Feasibility column
+  let feasHtml = '<span class="simlog-feasibility none">NO REASSIGNMENT</span>';
+  if(feasibility){
+    const fMap = {
+      feasible:              { cls:'feasible',   lbl:'FEASIBLE' },
+      feasible_with_caution: { cls:'caution',    lbl:'WITH CAUTION' },
+      not_feasible:          { cls:'infeasible', lbl:'NOT FEASIBLE' },
+    };
+    const f = fMap[feasibility.status] || { cls:'infeasible', lbl: feasibility.status.toUpperCase() };
+    const reasons = (feasibility.reasons || []).concat(feasibility.warnings || []);
+    feasHtml = `<span class="simlog-feasibility ${f.cls}">${f.lbl}</span>
+      ${reasons.length ? `<div style="margin-top:5px; font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--text-faint); line-height:1.5;">${reasons.slice(0,2).map(r=>`<div>· ${r}</div>`).join('')}${reasons.length>2?`<div>· +${reasons.length-2} more</div>`:''}</div>` : ''}`;
+  }
+
+  // Downstream column
+  let dsHtml = '<span style="color:var(--text-faint);font-family:\'IBM Plex Mono\',monospace;font-size:10px;">No downstream tasks</span>';
+  if(dependency_impact && dependency_impact.downstream && dependency_impact.downstream.length > 0){
+    const ds = dependency_impact.downstream;
+    const shown = ds.slice(0, 4);
+    dsHtml = `<div class="simlog-downstream">
+      ${shown.map(d => `<div class="ds-row"><span class="ds-tid">${d.task_id}</span><span class="ds-name">${d.name}</span><span class="risk-pill ${riskClass(d.risk_level||'nominal')}" style="font-size:9px;"><span class="dot"></span>${d.risk_level||'—'}</span></div>`).join('')}
+      ${ds.length > 4 ? `<div class="simlog-more">+${ds.length - 4} more</div>` : ''}
+    </div>`;
+  }
+
+  const statusLabels = { pending:'PENDING', saved:'SAVED', discarded:'DISCARDED' };
+  const reassignLabel = entry.reassigned_to
+    ? `<strong style="color:var(--text);">${entry.astronaut_id}</strong> → <strong style="color:var(--text);">${entry.reassigned_to}</strong>`
+    : `<strong style="color:var(--text);">${entry.astronaut_id}</strong> <span style="color:var(--text-faint)">(delay / drop)</span>`;
+
+  const canAct = status === 'pending';
+
+  return `<div class="simlog-entry ${status}" id="simlog-${id}">
+    <div class="simlog-entry-head">
+      <span class="simlog-seq">#${seq}</span>
+      <span class="simlog-ts">${ts}</span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);">
+        D${entry.day_modified}${entry.task_id ? ` · ${entry.task_id}` : ''} · ${reassignLabel}
+      </span>
+      <span class="simlog-status-badge ${status}">${statusLabels[status]}</span>
+      <div class="simlog-entry-actions">
+        ${canAct ? `<button class="btn-save" onclick="simLogSave('${id}')">Save</button>` : ''}
+        ${canAct ? `<button class="btn-discard" onclick="simLogDiscard('${id}')">Discard</button>` : ''}
+        ${status === 'saved' ? `<button class="ghost" style="font-size:9px;padding:4px 10px;" onclick="simLogUnsave('${id}')">Unsave</button>` : ''}
+      </div>
+    </div>
+    <div class="simlog-entry-body">
+      <div class="simlog-col">
+        <div class="simlog-col-label">Score Impact · Day ${entry.day_modified}</div>
+        <div class="simlog-scores">
+          <span class="simlog-score-val" style="color:var(--text-dim);">${before !== null ? before.toFixed(4) : '—'}</span>
+          <span class="simlog-arrow">→</span>
+          <span class="simlog-score-val ${scoreCls}">${after !== null ? after.toFixed(4) : '—'}</span>
+        </div>
+        <div style="margin-top:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-faint);">
+          <span class="risk-pill ${riskClass(beforeRisk)}" style="font-size:9px;"><span class="dot"></span>${beforeRisk}</span>
+          <span style="margin:0 4px;">→</span>
+          <span class="risk-pill ${riskClass(afterRisk)}" style="font-size:9px;"><span class="dot"></span>${afterRisk}</span>
+        </div>
+        ${delta !== null ? `<div class="simlog-delta ${deltaCls}" style="margin-top:6px;">Δ ${deltaSign}${delta.toFixed(4)}</div>` : ''}
+      </div>
+      <div class="simlog-col">
+        <div class="simlog-col-label">Feasibility</div>
+        ${feasHtml}
+      </div>
+      <div class="simlog-col">
+        <div class="simlog-col-label">Downstream Protected (${dependency_impact ? (dependency_impact.downstream||[]).length : 0})</div>
+        ${dsHtml}
+        <div class="simlog-notes-wrap">
+          <textarea class="simlog-notes" id="simlog-notes-${id}" placeholder="Add notes..." onchange="simLogSaveNote('${id}', this.value)">${logEntry.notes || ''}</textarea>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderSimLog(){
+  const panel = $('#simLogPanel');
+  const container = $('#simLogEntries');
+  const countEl   = $('#simLogCount');
+
+  if(simLog.length === 0){
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = '';
+  countEl.textContent = `${simLog.length} entr${simLog.length === 1 ? 'y' : 'ies'}`;
+  container.innerHTML = simLog.map(simLogEntryHtml).join('');
+}
+
+function simLogAppend(entry, feasibility, dependency_impact){
+  const now = new Date();
+  const ts = now.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const logEntry = {
+    id:   entry.id.toString(),
+    seq:  simLog.length + 1,
+    ts,
+    status: 'pending',
+    entry,
+    feasibility,
+    dependency_impact,
+    notes: '',
+  };
+  simLog.push(logEntry);
+  renderSimLog();
+}
+
+function simLogSave(id){
+  const e = simLog.find(e => e.id === id);
+  if(e){ e.status = 'saved'; renderSimLog(); showToast(`Intervention #${e.seq} saved`); }
+}
+
+function simLogUnsave(id){
+  const e = simLog.find(e => e.id === id);
+  if(e){ e.status = 'pending'; renderSimLog(); showToast(`Intervention #${e.seq} moved back to pending`); }
+}
+
+// Last discard — kept so we can undo it
+let lastDiscarded = null;
+
+function simLogDiscard(id){
+  const e = simLog.find(e => e.id === id);
+  if(!e) return;
+
+  // Snapshot for undo
+  lastDiscarded = {
+    id,
+    seq: e.seq,
+    prevStatus: e.status,
+    stackEntry: simulationStack.find(s => s.id.toString() === id) || null,
+    stackIdx:   simulationStack.findIndex(s => s.id.toString() === id),
+  };
+
+  e.status = 'discarded';
+  // Also remove from simulation stack so the matrix updates
+  const stackIdx = simulationStack.findIndex(s => s.id.toString() === id);
+  if(stackIdx !== -1){
+    simulationStack.splice(stackIdx, 1);
+    rebuildOverlay();
+    renderHistoryList();
+    if(simModeActive) renderMatrix(overlayScores);
+  }
+  renderSimLog();
+  showToast(`Intervention #${e.seq} discarded — Undo?`);
+  showUndoBar(e.seq);
+}
+
+function simLogUndoDiscard(){
+  if(!lastDiscarded) return;
+  const { id, seq, prevStatus, stackEntry, stackIdx } = lastDiscarded;
+  const e = simLog.find(e => e.id === id);
+  if(e){
+    e.status = prevStatus;
+    // Re-insert into simulation stack at original position if it was there
+    if(stackEntry){
+      const insertAt = Math.min(stackIdx, simulationStack.length);
+      simulationStack.splice(insertAt, 0, stackEntry);
+      rebuildOverlay();
+      renderHistoryList();
+      if(simModeActive) renderMatrix(overlayScores);
+    }
+    renderSimLog();
+    showToast(`Intervention #${seq} restored`);
+  }
+  lastDiscarded = null;
+  hideUndoBar();
+}
+
+function showUndoBar(seq){
+  let bar = $('#simUndoBar');
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'simUndoBar';
+    bar.style.cssText = [
+      'position:fixed','bottom:20px','left:50%','transform:translateX(-50%)',
+      'background:var(--panel-raised)','border:1px solid var(--hairline-bright)',
+      'padding:10px 16px','display:flex','align-items:center','gap:12px',
+      'font-family:IBM Plex Mono,monospace','font-size:11px','color:var(--text-dim)',
+      'letter-spacing:0.06em','z-index:9999','white-space:nowrap',
+    ].join(';');
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `Intervention #${seq} discarded
+    <button onclick="simLogUndoDiscard()" style="font-size:10px;padding:4px 12px;color:var(--cyan);border-color:var(--cyan);">UNDO</button>
+    <button onclick="hideUndoBar()" style="font-size:10px;padding:4px 10px;" class="ghost">✕</button>`;
+  bar.style.display = 'flex';
+  clearTimeout(showUndoBar._t);
+  showUndoBar._t = setTimeout(hideUndoBar, 7000);
+}
+
+function hideUndoBar(){
+  const bar = $('#simUndoBar');
+  if(bar) bar.style.display = 'none';
+  clearTimeout(showUndoBar._t);
+}
+
+function simLogSaveNote(id, value){
+  const e = simLog.find(e => e.id === id);
+  if(e) e.notes = value;
+}
+
+$('#simLogRefreshBtn').addEventListener('click', () => {
+  const before = simLog.length;
+  simLog = simLog.filter(e => e.status !== 'discarded');
+  // Re-sequence
+  simLog.forEach((e, i) => { e.seq = i + 1; });
+  renderSimLog();
+  const removed = before - simLog.length;
+  showToast(removed > 0 ? `Removed ${removed} discarded entr${removed===1?'y':'ies'}` : 'No discarded entries to remove');
+});
+
+$('#simLogClearBtn').addEventListener('click', () => {
+  if(simLog.length === 0) return;
+  simLog = [];
+  lastDiscarded = null;
+  hideUndoBar();
+  renderSimLog();
+  showToast('Simulation log cleared');
+});
+
+$('#simLogExportBtn').addEventListener('click', () => {
+  if(simLog.length === 0){ showToast('Nothing to export yet'); return; }
+  const exportData = {
+    exported_at: new Date().toISOString(),
+    mission: { crew: crew.map(c => c.astronaut_id), days: missionMap.length },
+    entries: simLog.map(e => ({
+      seq:      e.seq,
+      ts:       e.ts,
+      status:   e.status,
+      notes:    e.notes,
+      astronaut_id:   e.entry.astronaut_id,
+      reassigned_to:  e.entry.reassigned_to,
+      day_modified:   e.entry.day_modified,
+      task_id:        e.entry.task_id,
+      score_before:   (() => { const r = e.entry.comparison.find(r => r.day === e.entry.day_modified); return r ? r.original_drift : null; })(),
+      score_after:    (() => { const r = e.entry.comparison.find(r => r.day === e.entry.day_modified); return r ? r.whatif_drift   : null; })(),
+      feasibility_status: e.feasibility ? e.feasibility.status : null,
+      downstream_count:   e.dependency_impact ? (e.dependency_impact.downstream||[]).length : 0,
+      full_comparison:    e.entry.comparison,
+    })),
+  };
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `fatigue-console-sim-log-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`Exported ${simLog.length} log entries`);
+});
+
+/* ── Patched what-if run: in sim mode, push result onto the stack ── */
 $('#wiRunBtn').addEventListener('click', async () => {
   const taskId = $('#wiTask').value;
   const reassign_to = $('#wiReassign').value || null;
@@ -1022,7 +1746,31 @@ $('#wiRunBtn').addEventListener('click', async () => {
     renderWhatIfFeasibility(res.feasibility);
     renderWhatIfTable(res.comparison);
     renderWhatIfDependencyImpact(res.dependency_impact);
-    showToast(`Simulated intervention for ${res.astronaut_id} from day ${res.day_modified}`);
+
+    // Always build the stack entry (used by both sim-mode overlay and the log)
+    const stackEntry = {
+      id:            Date.now(),
+      astronaut_id:  res.astronaut_id,
+      reassigned_to: res.reassigned_to || null,
+      day_modified:  res.day_modified,
+      task_id:       taskId || null,
+      load_delta:    body.task_load_delta || null,
+      comparison:    res.comparison,
+    };
+
+    // Always append to the simulation log (visible regardless of sim mode toggle)
+    simLogAppend(stackEntry, res.feasibility, res.dependency_impact);
+
+    // In simulation mode: also push to the active overlay stack
+    if(simModeActive){
+      simulationStack.push(stackEntry);
+      rebuildOverlay();
+      renderHistoryList();
+      renderMatrix(overlayScores);
+      showToast(`[Sim #${simulationStack.length}] Queued for ${res.astronaut_id} — matrix + log updated`);
+    } else {
+      showToast(`Simulated for ${res.astronaut_id} D${res.day_modified} — logged`);
+    }
   }catch(err){
     showToast('SIMULATION ERROR — ' + err.message);
   }finally{
